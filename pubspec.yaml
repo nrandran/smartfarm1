@@ -1,0 +1,37 @@
+name: app_smart_farm
+description: A new Flutter project.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  video_player: ^2.8.2
+  firebase_core: ^3.6.0
+  firebase_database: ^11.3.10
+  firebase_analytics: ^11.6.0
+
+dev_dependencies:
+  fl_chart: ^0.66.0
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  assets:
+    - assets/video/sample.mp4
+    - assets/image/cuaca.png
+    - assets/image/background.png
+    - assets/image/logo.png
+    - assets/image/vidio.png
+    - assets/image/backgroundfull.jpg
+    - assets/image/notif.jpg
+    - assets/image/back.png
+    - assets/image/hama.png
+    - assets/image/suhu.png
+    - assets/image/tips.png
