@@ -1,0 +1,23 @@
+{
+  "lahan": {
+    "1": { "name": "Ngrampal", "area": "1200 m²", "status": "Bagus" },
+    "2": { "name": "Seleman", "area": "1600 m²", "status": "Kurang air" },
+    "3": { "name": "Besi", "area": "2600 m²", "status": "Good" }
+  },
+  "suhu": {
+    "value": 24,
+    "kondisi": "Cerah berawan"
+  },
+  "suhu_history": {
+    "2025-09-22T08:00:00": { "value": 23, "kondisi": "Mendung" },
+    "2025-09-22T12:00:00": { "value": 26, "kondisi": "Cerah" },
+    "2025-09-22T16:00:00": { "value": 24, "kondisi": "Cerah berawan" }
+  },
+  "hama": [22, 45, 17, 38, 28, 33, 41],
+  "iot_data": {
+    "suhu_tanah": 28,
+    "keterangan": "Normal",
+    "kelembapan": "basah",
+    "cahaya": 1200
+  }
+}

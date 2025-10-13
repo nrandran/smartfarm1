@@ -122,7 +122,7 @@ class _HomePageState extends State<HomePage> {
                 child: Text(
                   'Halo, ${widget.userName ?? "Pak"} ',
                   style: const TextStyle(
-                    fontSize: 20, 
+                    fontSize: 20,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -130,8 +130,25 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 20),
 
+              // Tips
+              const SectionTitle(title: 'Tips'),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Card(
+                  elevation: 2,
+                  color: Color(0xFFE8F5E9),
+                  child: Padding(
+                    padding: EdgeInsets.all(12.0),
+                    child: Text(
+                      'Jangan terlalu banyak air karena cuaca sekarang sering hujan.',
+                      style: TextStyle(color: Colors.black87),
+                    ),
+                  ),
+                ),
+              ),
+
               // Suhu Tanah (Realtime dari Firebase)
-              const SectionTitle(title: 'Suhu Tanah'),
+              const SectionTitle(title: 'Suhu Udara'),
               StreamBuilder(
                 stream: iotRef.onValue,
                 builder: (context, snapshot) {
@@ -188,22 +205,104 @@ class _HomePageState extends State<HomePage> {
               ),
 
               const SizedBox(height: 32),
+              //Kelembapan tanah
+              const SectionTitle(title: 'Kelembapan Tanah'),
+              StreamBuilder(
+                stream: iotRef.onValue,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData &&
+                      snapshot.data!.snapshot.value != null) {
+                    final data = snapshot.data!.snapshot.value as Map;
+                    final suhu = data['kelembapan_tanah'] ?? 0;
+                    final keterangan = data['keterangan'] ?? "-";
 
-              // Tips
-              const SectionTitle(title: 'Tips'),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Card(
-                  elevation: 2,
-                  color: Color(0xFFE8F5E9),
-                  child: Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: Text(
-                      'Jangan terlalu banyak air karena cuaca sekarang sering hujan.',
-                      style: TextStyle(color: Colors.black87),
-                    ),
-                  ),
+                    return Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            "$suhu°",
+                            style: const TextStyle(
+                              fontSize: 38,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                          Text(
+                            keterangan,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Image.asset('assets/image/cuaca.png', width: 100),
+                        ],
+                      ),
+                    );
+                  } else if (snapshot.hasError) {
+                    return const Center(child: Text("Error ambil data"));
+                  } else {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                },
+              ),
+
+              const SizedBox(height: 24),
+
+              // Weather Cards
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: const [
+                    WeatherCard(label: '30% VWC', description: 'Kering'),
+                    WeatherCard(label: '30% – 60% VWC', description: 'Normal'),
+                    WeatherCard(label: '60% – 80% VWC', description: 'Basah'),
+                  ],
                 ),
+              ),
+
+              const SizedBox(height: 32),
+
+              //intensitas cahaya
+              const SectionTitle(title: 'Intensitas Cahaya'),
+              StreamBuilder(
+                stream: iotRef.onValue,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData &&
+                      snapshot.data!.snapshot.value != null) {
+                    final data = snapshot.data!.snapshot.value as Map;
+                    final suhu = data['kelembapan_tanah'] ?? 0;
+                    final keterangan = data['keterangan'] ?? "-";
+
+                    return Center(
+                      child: Column(
+                        children: [
+                          Text(
+                            "$suhu°",
+                            style: const TextStyle(
+                              fontSize: 38,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                          Text(
+                            keterangan,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                    );
+                  } else if (snapshot.hasError) {
+                    return const Center(child: Text("Error ambil data"));
+                  } else {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                },
               ),
 
               const SizedBox(height: 32),
