@@ -111,7 +111,7 @@ class StartSetupPage extends StatelessWidget {
                         ),
                       ),
                       child: const Text(
-                        'Mulai',
+                        'Login',
                         style: TextStyle(fontSize: 18, color: Colors.white),
                       ),
                     ),

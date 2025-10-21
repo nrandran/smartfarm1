@@ -5,9 +5,10 @@ import 'NotificationPage.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 class HomePage extends StatefulWidget {
-  final String? userName; // 👈 bisa null kalau tidak dikirim
+  final String? userName;
+  final String? userLocation;
 
-  const HomePage({super.key, this.userName});
+  const HomePage({super.key, this.userName, this.userLocation});
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -16,22 +17,23 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
-
   List<Map<String, dynamic>> lahanData = [];
 
   @override
   void initState() {
     super.initState();
-    // Video
+
+    // 🎬 Inisialisasi video
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
         setState(() {});
-        _controller.setLooping(true);
-        _controller.setVolume(0.5);
-        _controller.play();
+        _controller
+          ..setLooping(true)
+          ..setVolume(0.5)
+          ..play();
       });
 
-    // Ambil data lahan dari Firebase
+    // 🌾 Ambil data lahan dari Firebase
     _dbRef.child("lahan").onValue.listen((event) {
       if (event.snapshot.value != null) {
         final raw = Map<dynamic, dynamic>.from(event.snapshot.value as Map);
@@ -41,9 +43,7 @@ class _HomePageState extends State<HomePage> {
               .toList();
         });
       } else {
-        setState(() {
-          lahanData = [];
-        });
+        setState(() => lahanData = []);
       }
     });
   }
@@ -66,7 +66,7 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
+              // ================= Header =================
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -101,7 +101,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // Video
+              // ================= Video =================
               if (_controller.value.isInitialized)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -116,21 +116,61 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 20),
 
-              // Sapaan
+              // ================= Sapaan + Lokasi =================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'Halo, ${widget.userName ?? "Pak"} ',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // 👋 Sapaan
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Halo, ${widget.userName ?? ""}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // 📍 Lokasi Card
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Image.asset(
+                            'assets/image/lokasi.jpg',
+                            width: 20,
+                            height: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            widget.userLocation ?? "Yogyakarta",
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              // Tips
+              // ================= Tips =================
               const SectionTitle(title: 'Tips'),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -147,171 +187,147 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // Suhu Tanah (Realtime dari Firebase)
+              // ================= Suhu Udara =================
               const SectionTitle(title: 'Suhu Udara'),
               StreamBuilder(
                 stream: iotRef.onValue,
                 builder: (context, snapshot) {
-                  if (snapshot.hasData &&
-                      snapshot.data!.snapshot.value != null) {
-                    final data = snapshot.data!.snapshot.value as Map;
-                    final suhu = data['suhu_tanah'] ?? 0;
-                    final keterangan = data['keterangan'] ?? "-";
+                  final data = (snapshot.data?.snapshot.value as Map?) ?? {};
+                  final suhu = data['suhu_tanah'] ?? 0;
+                  final keterangan = data['keterangan'] ?? "Data normal";
 
-                    return Center(
-                      child: Column(
-                        children: [
-                          Text(
-                            "$suhu°",
-                            style: const TextStyle(
-                              fontSize: 38,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
+                  return Center(
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 10),
+                        Image.asset('assets/image/cuaca.png', width: 100),
+                        Text(
+                          "$suhu°",
+                          style: const TextStyle(
+                            fontSize: 38,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
-                          Text(
-                            keterangan,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.black54,
-                            ),
+                        ),
+                        Text(
+                          keterangan,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black54,
                           ),
-                          const SizedBox(height: 10),
-                          Image.asset('assets/image/cuaca.png', width: 100),
-                        ],
-                      ),
-                    );
-                  } else if (snapshot.hasError) {
-                    return const Center(child: Text("Error ambil data"));
-                  } else {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                        ),
+                      ],
+                    ),
+                  );
                 },
               ),
 
               const SizedBox(height: 24),
 
-              // Weather Cards
+              // ================= Kartu Suhu =================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: const [
                     WeatherCard(label: '<20°C', description: 'Dingin'),
-                    WeatherCard(label: '25-30°C', description: 'Normal'),
+                    WeatherCard(label: '25–30°C', description: 'Normal'),
                     WeatherCard(label: '>35°C', description: 'Panas'),
                   ],
                 ),
               ),
 
               const SizedBox(height: 32),
-              //Kelembapan tanah
+
+              // ================= Kelembapan =================
               const SectionTitle(title: 'Kelembapan Tanah'),
+              const SizedBox(height: 24),
               StreamBuilder(
                 stream: iotRef.onValue,
                 builder: (context, snapshot) {
-                  if (snapshot.hasData &&
-                      snapshot.data!.snapshot.value != null) {
-                    final data = snapshot.data!.snapshot.value as Map;
-                    final suhu = data['kelembapan_tanah'] ?? 0;
-                    final keterangan = data['keterangan'] ?? "-";
+                  final data = (snapshot.data?.snapshot.value as Map?) ?? {};
+                  final kelembapan = data['kelembapan_tanah'] ?? 0;
+                  final keterangan = data['keterangan'] ?? "Stabil";
 
-                    return Center(
-                      child: Column(
-                        children: [
-                          Text(
-                            "$suhu°",
-                            style: const TextStyle(
-                              fontSize: 38,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
+                  return Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          "$kelembapan%",
+                          style: const TextStyle(
+                            fontSize: 38,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
-                          Text(
-                            keterangan,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.black54,
-                            ),
+                        ),
+                        Text(
+                          keterangan,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black54,
                           ),
-                          const SizedBox(height: 10),
-                          Image.asset('assets/image/cuaca.png', width: 100),
-                        ],
-                      ),
-                    );
-                  } else if (snapshot.hasError) {
-                    return const Center(child: Text("Error ambil data"));
-                  } else {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                        ),
+                      ],
+                    ),
+                  );
                 },
               ),
 
               const SizedBox(height: 24),
 
-              // Weather Cards
+              // ================= Kartu Kelembapan =================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 1),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: const [
                     WeatherCard(label: '30% VWC', description: 'Kering'),
-                    WeatherCard(label: '30% – 60% VWC', description: 'Normal'),
-                    WeatherCard(label: '60% – 80% VWC', description: 'Basah'),
+                    WeatherCard(label: '30–60% VWC', description: 'Normal'),
+                    WeatherCard(label: '60–80% VWC', description: 'Basah'),
                   ],
                 ),
               ),
 
               const SizedBox(height: 32),
 
-              //intensitas cahaya
+              // ================= Intensitas Cahaya =================
               const SectionTitle(title: 'Intensitas Cahaya'),
+              const SizedBox(height: 24),
               StreamBuilder(
                 stream: iotRef.onValue,
                 builder: (context, snapshot) {
-                  if (snapshot.hasData &&
-                      snapshot.data!.snapshot.value != null) {
-                    final data = snapshot.data!.snapshot.value as Map;
-                    final suhu = data['kelembapan_tanah'] ?? 0;
-                    final keterangan = data['keterangan'] ?? "-";
+                  final data = (snapshot.data?.snapshot.value as Map?) ?? {};
+                  final cahaya = data['intensitas_cahaya'] ?? 0;
+                  final keterangan = data['keterangan'] ?? "Terang";
 
-                    return Center(
-                      child: Column(
-                        children: [
-                          Text(
-                            "$suhu°",
-                            style: const TextStyle(
-                              fontSize: 38,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green,
-                            ),
+                  return Center(
+                    child: Column(
+                      children: [
+                        Text(
+                          "$cahaya Lux",
+                          style: const TextStyle(
+                            fontSize: 38,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green,
                           ),
-                          Text(
-                            keterangan,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.black54,
-                            ),
+                        ),
+                        Text(
+                          keterangan,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Colors.black54,
                           ),
-                          const SizedBox(height: 10),
-                        ],
-                      ),
-                    );
-                  } else if (snapshot.hasError) {
-                    return const Center(child: Text("Error ambil data"));
-                  } else {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                    ),
+                  );
                 },
               ),
 
               const SizedBox(height: 32),
 
-              // Grafik Hama
-              const SectionTitle(title: 'Serangan Hama'),
-              const PestChart(),
-
-              const SizedBox(height: 16),
+              // ================= Tips Tambahan =================
               const SectionTitle(title: 'Tips'),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
@@ -328,51 +344,11 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
+              // ================= Grafik Serangan Hama =================
+              const SectionTitle(title: 'Serangan Hama'),
+              const PestChart(),
+
               const SizedBox(height: 32),
-
-              // Data Lahan
-              const SectionTitle(title: 'Lahan Sawah Anda'),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: lahanData.isEmpty
-                      ? [const Text("Belum ada data lahan")]
-                      : lahanData.map((field) {
-                          return FieldCard(
-                            name: field['name'] ?? "-",
-                            area: field['area'] ?? "-",
-                            status: field['status'] ?? "-",
-                            lokasi: field['lokasi'] ?? "-",
-                          );
-                        }).toList(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Tombol Aksi
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () {
-                      final newRef = _dbRef.child("lahan").push();
-                      newRef.set({
-                        "name": "Baru",
-                        "area": "1000 m²",
-                        "status": "Bagus",
-                        "lokasi": "Belum diisi",
-                      });
-                    },
-                    label: const Text('Tambah Lahan'),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -381,7 +357,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ================= Komponen ===================
+// ================= Komponen Reusable ===================
 
 class WeatherCard extends StatelessWidget {
   final String label;
@@ -439,46 +415,7 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-class FieldCard extends StatelessWidget {
-  final String name;
-  final String area;
-  final String status;
-  final String lokasi;
-
-  const FieldCard({
-    required this.name,
-    required this.area,
-    required this.status,
-    required this.lokasi,
-    super.key,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("$area\nLokasi: $lokasi"),
-        isThreeLine: true,
-        trailing: Text(
-          status,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: status.toLowerCase().contains('kurang')
-                ? Colors.red
-                : Colors.green,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ================= Grafik ===================
+// ================= Grafik Serangan Hama ===================
 
 class PestChart extends StatelessWidget {
   const PestChart({super.key});
@@ -495,7 +432,7 @@ class PestChart extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
         ],
       ),
@@ -534,10 +471,14 @@ class PestChart extends StatelessWidget {
                 },
               ),
             ),
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
           ),
-          gridData: FlGridData(show: true),
+          gridData: const FlGridData(show: true),
           borderData: FlBorderData(show: false),
         ),
       ),

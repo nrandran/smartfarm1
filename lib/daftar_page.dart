@@ -86,12 +86,6 @@ class _DaftarPageState extends State<DaftarPage> {
                     hint: "ex: Sleman",
                     controller: lokasiC,
                   ),
-                  _buildInputField(
-                    label: "Size in m²",
-                    hint: "ex: 200",
-                    keyboardType: TextInputType.number,
-                    controller: sizeC,
-                  ),
                 ],
               ),
             ),
@@ -100,14 +94,15 @@ class _DaftarPageState extends State<DaftarPage> {
               padding: const EdgeInsets.only(bottom: 24.0),
               child: ElevatedButton(
                 onPressed: () {
-                  // Langsung masuk ke HomePage tanpa menyimpan data
-      Navigator.pushReplacement(
-  context,
-  MaterialPageRoute(
-    builder: (_) => HomePage(userName: namaC.text),
-  ),
-);
-
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => HomePage(
+                        userName: namaC.text,
+                        userLocation: lokasiC.text, // ➕ kirim lokasi
+                      ),
+                    ),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
