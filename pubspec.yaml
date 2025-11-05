@@ -15,12 +15,21 @@ dependencies:
   firebase_core: ^3.6.0
   firebase_database: ^11.3.10
   firebase_analytics: ^11.6.0
+  crypto: ^3.0.2
+  intl: ^0.20.2
+  firebase_auth: ^5.1.2
 
 dev_dependencies:
   fl_chart: ^0.66.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: 'assets/image/logo.png'
 
 flutter:
   assets:
@@ -36,3 +45,4 @@ flutter:
     - assets/image/suhu.png
     - assets/image/tips.png
     - assets/image/lokasi.jpg
+    - assets/image/logout.png

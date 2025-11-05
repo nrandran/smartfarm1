@@ -1,107 +1,101 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'HomePage.dart';
 
-class DaftarPage extends StatefulWidget {
-  const DaftarPage({super.key});
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<DaftarPage> createState() => _DaftarPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _DaftarPageState extends State<DaftarPage> {
+class _LoginPageState extends State<LoginPage> {
   final TextEditingController namaC = TextEditingController();
-  final TextEditingController lokasiC = TextEditingController();
-  final TextEditingController emailC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
-
   final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child("User");
-  bool _isSaving = false;
 
-  // 🔐 Hash password (opsional untuk disimpan di Realtime DB)
+  bool _isLoading = false;
+
+  // 🔐 Fungsi hash password (harus sama seperti di DaftarPage)
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
     return digest.toString();
   }
 
-  Future<void> _simpanData() async {
+  Future<void> _login() async {
     final name = namaC.text.trim();
-    final lokasi = lokasiC.text.trim();
-    final email = emailC.text.trim();
     final password = passwordC.text;
 
-    if (name.isEmpty || lokasi.isEmpty || email.isEmpty || password.isEmpty) {
+    if (name.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Lengkapi semua kolom terlebih dahulu.")),
+        const SnackBar(content: Text("Nama dan password wajib diisi.")),
       );
       return;
     }
 
-    setState(() => _isSaving = true);
+    setState(() => _isLoading = true);
 
     try {
-      // ✅ Buat akun di Firebase Authentication
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
+      // Ambil semua data dari node "lahan"
+      final snapshot = await dbRef.get();
 
-      // ✅ Simpan data tambahan ke Realtime Database
-      final newData = {
-        "uid": credential.user?.uid,
-        "name": name,
-        "email": email,
-        "lokasi": lokasi,
-        "status": "Belum dicek",
-        "password_hash": _hashPassword(password), // hanya untuk referensi
-        "created_at": DateTime.now().toIso8601String(),
-      };
-
-      await dbRef.child(credential.user!.uid).set(newData);
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Akun berhasil dibuat!")),
-      );
-
-      // ✅ Pindah ke halaman HomePage
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              HomePage(userName: name, userLocation: lokasi),
-        ),
-      );
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = "Terjadi kesalahan.";
-      if (e.code == 'email-already-in-use') {
-        errorMessage = "Email sudah terdaftar.";
-      } else if (e.code == 'invalid-email') {
-        errorMessage = "Format email tidak valid.";
-      } else if (e.code == 'weak-password') {
-        errorMessage = "Password terlalu lemah.";
+      if (!snapshot.exists) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Belum ada data pengguna terdaftar.")),
+        );
+        setState(() => _isLoading = false);
+        return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
-      );
+      final hashedPassword = _hashPassword(password);
+      bool found = false;
+      String lokasi = "";
+
+      // Telusuri semua data di "lahan"
+      for (final child in snapshot.children) {
+        final data = Map<String, dynamic>.from(child.value as Map);
+
+        if (data['name'] == name && data['password_hash'] == hashedPassword) {
+          found = true;
+          lokasi = data['lokasi'] ?? "-";
+          break;
+        }
+      }
+
+      if (found) {
+        // Jika login berhasil
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Login berhasil!")));
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HomePage(userName: name, userLocation: lokasi),
+          ),
+        );
+      } else {
+        // Jika login gagal
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Nama atau password salah.")),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Gagal menyimpan data: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Terjadi kesalahan: $e")));
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   void dispose() {
     namaC.dispose();
-    lokasiC.dispose();
-    emailC.dispose();
     passwordC.dispose();
     super.dispose();
   }
@@ -115,14 +109,14 @@ class _DaftarPageState extends State<DaftarPage> {
           children: [
             const SizedBox(height: 50),
             const Text(
-              "Daftar Akun Petani",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              "Masuk ke Akun Anda",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                "Kelola semua lahan pertanianmu dalam satu aplikasi!",
+                "Gunakan nama dan password yang sudah terdaftar.",
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.black87),
               ),
@@ -134,25 +128,14 @@ class _DaftarPageState extends State<DaftarPage> {
                 children: [
                   _buildInputField(
                     label: "Nama",
-                    hint: "ex: Budi",
+                    hint: "Masukkan nama",
                     controller: namaC,
-                  ),
-                  _buildInputField(
-                    label: "Email",
-                    hint: "Masukkan email aktif",
-                    controller: emailC,
-                    keyboardType: TextInputType.emailAddress,
                   ),
                   _buildInputField(
                     label: "Password",
                     hint: "Masukkan password",
                     controller: passwordC,
                     obscureText: true,
-                  ),
-                  _buildInputField(
-                    label: "Lokasi Sawah",
-                    hint: "ex: Sleman",
-                    controller: lokasiC,
                   ),
                 ],
               ),
@@ -161,7 +144,7 @@ class _DaftarPageState extends State<DaftarPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 24.0),
               child: ElevatedButton(
-                onPressed: _isSaving ? null : _simpanData,
+                onPressed: _isLoading ? null : _login,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   padding: const EdgeInsets.symmetric(
@@ -172,7 +155,7 @@ class _DaftarPageState extends State<DaftarPage> {
                     borderRadius: BorderRadius.circular(30),
                   ),
                 ),
-                child: _isSaving
+                child: _isLoading
                     ? const SizedBox(
                         height: 18,
                         width: 18,
@@ -182,7 +165,7 @@ class _DaftarPageState extends State<DaftarPage> {
                         ),
                       )
                     : const Text(
-                        "DAFTAR",
+                        "LOGIN",
                         style: TextStyle(fontSize: 16, color: Colors.white),
                       ),
               ),
@@ -193,6 +176,7 @@ class _DaftarPageState extends State<DaftarPage> {
     );
   }
 
+  // Reusable Input Field
   static Widget _buildInputField({
     required String label,
     required String hint,

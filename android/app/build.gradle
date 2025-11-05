@@ -31,14 +31,23 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    buildscript {
+    dependencies {
+        classpath 'com.google.gms:google-services:4.4.2' // pastikan ada ini
+    }
 }
+}
+
 
 flutter {
     source "../.."
 }
 
 dependencies {
-    implementation platform('com.google.firebase:firebase-bom:33.3.0')
-    implementation 'com.google.firebase:firebase-analytics'
+implementation platform('com.google.firebase:firebase-bom:33.5.1')
+implementation 'com.google.firebase:firebase-analytics'
+
 }
+
+apply plugin: 'com.google.gms.google-services'
 
