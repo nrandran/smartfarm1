@@ -14,7 +14,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController namaC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child("User");
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child("SmartFarm/User");
 
   bool _isLoading = false;
 

@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'daftar_page.dart';
 import 'LoginPage.dart';
+import 'HomePage.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // ✅ Inisialisasi Firebase
-  runApp(const MyApp());
+  await Firebase.initializeApp();
+  final user = FirebaseAuth.instance.currentUser;
+  runApp(MyApp(isLoggedIn: user != null));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  const MyApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SMART FARM',
       theme: ThemeData(primarySwatch: Colors.green, fontFamily: 'Arial'),
-      home: const StartSetupPage(),
+      home: isLoggedIn ? const HomePage() : const StartSetupPage(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -32,15 +36,12 @@ class StartSetupPage extends StatelessWidget {
       backgroundColor: const Color(0xFFF5F5F5),
       body: Stack(
         children: [
-          // Background image
           Positioned.fill(
             child: Image.asset(
               'assets/image/background.png',
               fit: BoxFit.cover,
             ),
           ),
-
-          // Konten utama
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -48,14 +49,12 @@ class StartSetupPage extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Logo
                     SizedBox(
                       width: 120,
                       height: 120,
                       child: Image.asset('assets/image/logo.png'),
                     ),
                     const SizedBox(height: 10),
-
                     const Text(
                       'SMART FARM',
                       style: TextStyle(
@@ -71,9 +70,7 @@ class StartSetupPage extends StatelessWidget {
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 80),
-
                     const Text(
                       'Mulai Atur Lahan Pertanianmu',
                       style: TextStyle(
@@ -83,17 +80,13 @@ class StartSetupPage extends StatelessWidget {
                       ),
                       textAlign: TextAlign.center,
                     ),
-
                     const SizedBox(height: 15),
-
                     const Text(
                       'Pantau kondisi sawah 24 jam dan dapatkan notifikasi cerdas di genggaman tangan!',
                       style: TextStyle(fontSize: 16, color: Colors.black54),
                       textAlign: TextAlign.center,
                     ),
-
                     const SizedBox(height: 30),
-
                     ElevatedButton(
                       onPressed: () {
                         Navigator.push(
@@ -104,9 +97,7 @@ class StartSetupPage extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 60,
-                          vertical: 15,
-                        ),
+                            horizontal: 60, vertical: 15),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),
@@ -117,7 +108,6 @@ class StartSetupPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 30),
-
                     ElevatedButton(
                       onPressed: () {
                         Navigator.push(
@@ -128,9 +118,7 @@ class StartSetupPage extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 60,
-                          vertical: 15,
-                        ),
+                            horizontal: 60, vertical: 15),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),

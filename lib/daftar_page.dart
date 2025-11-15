@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'HomePage.dart';
 
@@ -15,13 +14,14 @@ class DaftarPage extends StatefulWidget {
 class _DaftarPageState extends State<DaftarPage> {
   final TextEditingController namaC = TextEditingController();
   final TextEditingController lokasiC = TextEditingController();
-  final TextEditingController emailC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
 
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child("User");
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child(
+    "SmartFarm/User",
+  );
   bool _isSaving = false;
 
-  // 🔐 Hash password (opsional untuk disimpan di Realtime DB)
+  // 🔐 Hash password untuk keamanan
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
@@ -31,10 +31,9 @@ class _DaftarPageState extends State<DaftarPage> {
   Future<void> _simpanData() async {
     final name = namaC.text.trim();
     final lokasi = lokasiC.text.trim();
-    final email = emailC.text.trim();
     final password = passwordC.text;
 
-    if (name.isEmpty || lokasi.isEmpty || email.isEmpty || password.isEmpty) {
+    if (name.isEmpty || lokasi.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Lengkapi semua kolom terlebih dahulu.")),
       );
@@ -44,54 +43,43 @@ class _DaftarPageState extends State<DaftarPage> {
     setState(() => _isSaving = true);
 
     try {
-      // ✅ Buat akun di Firebase Authentication
-      final credential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
+      // 🔑 Buat ID unik otomatis untuk user baru
+      final newUserRef = dbRef.push();
 
-      // ✅ Simpan data tambahan ke Realtime Database
+      // 🔹 Simpan data utama user
       final newData = {
-        "uid": credential.user?.uid,
+        "uid": newUserRef.key,
         "name": name,
-        "email": email,
         "lokasi": lokasi,
         "status": "Belum dicek",
-        "password_hash": _hashPassword(password), // hanya untuk referensi
+        "password_hash": _hashPassword(password),
         "created_at": DateTime.now().toIso8601String(),
       };
 
-      await dbRef.child(credential.user!.uid).set(newData);
+      await newUserRef.set(newData);
+
+      // 🔹 Buat struktur kosong untuk 3 riwayat sensor
+      await newUserRef.child("Riwayat_Suhu").set({});
+      await newUserRef.child("Riwayat_KelembapanTanah").set({});
+      await newUserRef.child("Riwayat_IntensitasCahaya").set({});
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Akun berhasil dibuat!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Akun berhasil dibuat!")));
 
-      // ✅ Pindah ke halaman HomePage
+      // 🔹 Pindah ke halaman HomePage
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              HomePage(userName: name, userLocation: lokasi),
+          builder: (_) => HomePage(userName: name, userLocation: lokasi),
         ),
       );
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = "Terjadi kesalahan.";
-      if (e.code == 'email-already-in-use') {
-        errorMessage = "Email sudah terdaftar.";
-      } else if (e.code == 'invalid-email') {
-        errorMessage = "Format email tidak valid.";
-      } else if (e.code == 'weak-password') {
-        errorMessage = "Password terlalu lemah.";
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(errorMessage)),
-      );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Gagal menyimpan data: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Gagal menyimpan data: $e")));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -101,7 +89,6 @@ class _DaftarPageState extends State<DaftarPage> {
   void dispose() {
     namaC.dispose();
     lokasiC.dispose();
-    emailC.dispose();
     passwordC.dispose();
     super.dispose();
   }
@@ -136,12 +123,6 @@ class _DaftarPageState extends State<DaftarPage> {
                     label: "Nama",
                     hint: "ex: Budi",
                     controller: namaC,
-                  ),
-                  _buildInputField(
-                    label: "Email",
-                    hint: "Masukkan email aktif",
-                    controller: emailC,
-                    keyboardType: TextInputType.emailAddress,
                   ),
                   _buildInputField(
                     label: "Password",

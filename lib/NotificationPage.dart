@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:intl/intl.dart'; // ✅ Untuk format waktu
 
 class NotificationPage extends StatefulWidget {
   const NotificationPage({super.key});
@@ -9,70 +10,94 @@ class NotificationPage extends StatefulWidget {
 }
 
 class _NotificationPageState extends State<NotificationPage> {
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref(
-    "SmartFarm/Data_Terbaru/Notifikasi",
-  );
+  final DatabaseReference dataTerbaruRef =
+      FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru");
+  final DatabaseReference notifRef =
+      FirebaseDatabase.instance.ref("SmartFarm/Notifikasi");
+  final DatabaseReference riwayatSuhuRef =
+      FirebaseDatabase.instance.ref("SmartFarm/User/Riwayat_Suhu");
+
   double? suhu;
   double? kelembaban;
-  String? status;
+  String? waktuTerakhir; // 🕒 Simpan waktu dari Riwayat_Suhu
 
   @override
   void initState() {
     super.initState();
-    // Dengarkan perubahan di Data_Terbaru
-    dbRef.onValue.listen((event) {
+
+    // 🔁 Dengarkan perubahan suhu & kelembaban terbaru
+    dataTerbaruRef.onValue.listen((event) {
       final data = event.snapshot.value as Map?;
       if (data != null) {
         setState(() {
-          suhu = (data["suhu"] as num).toDouble();
-          kelembaban = (data["kelembaban_udara"] as num).toDouble();
+          suhu = (data["suhu"] as num?)?.toDouble();
+          kelembaban = (data["kelembaban_udara"] as num?)?.toDouble();
         });
-        _updateNotification(); // perbarui notifikasi otomatis
+        _ambilWaktuTerbaru(); // Ambil waktu dari Riwayat_Suhu
       }
     });
   }
 
-  void _updateNotification() async {
+  Future<void> _ambilWaktuTerbaru() async {
+    // Ambil data terakhir dari /SmartFarm/User/Riwayat_Suhu
+    final snapshot = await riwayatSuhuRef.limitToLast(1).get();
+    if (snapshot.exists) {
+      final data = snapshot.value as Map;
+      final lastEntry = data.values.first as Map;
+      final waktu = lastEntry["waktu"] ?? DateTime.now().toIso8601String();
+
+      setState(() {
+        waktuTerakhir = waktu;
+      });
+
+      _updateNotification(waktu);
+    }
+  }
+
+  Future<void> _updateNotification(String waktu) async {
     if (suhu == null || kelembaban == null) return;
 
-    String title = "";
+    String? title;
     String message = "";
-    String color = "";
-    String image = "";
+    String? color;
+    String image = "assets/image/suhu.png";
 
+    // 🔥 Logika suhu
     if (suhu! > 30) {
-      title = "Peringatan Suhu";
+      title = "Peringatan Suhu Tinggi";
       message = "Suhu udara tinggi: ${suhu!.toStringAsFixed(1)}°C";
       color = "red";
-      image = "assets/image/suhu.png";
     } else if (suhu! < 20) {
       title = "Suhu Rendah";
       message = "Suhu udara rendah: ${suhu!.toStringAsFixed(1)}°C";
       color = "blue";
-      image = "assets/image/suhu.png";
-    } else {
-      title = "Suhu Normal";
-      message = "Suhu stabil pada ${suhu!.toStringAsFixed(1)}°C";
-      color = "green";
-      image = "assets/image/suhu.png";
     }
 
+    // 💧 Logika kelembaban
     if (kelembaban! > 90) {
       message += "\nKelembaban tinggi: ${kelembaban!.toStringAsFixed(1)}%";
+      title ??= "Peringatan Kelembaban";
+      color ??= "red";
     } else if (kelembaban! < 40) {
       message += "\nKelembaban rendah: ${kelembaban!.toStringAsFixed(1)}%";
+      title ??= "Kelembaban Rendah";
+      color ??= "blue";
     }
 
-    // Simpan notifikasi ke Firebase
-    DatabaseReference notifRef = FirebaseDatabase.instance
-        .ref("SmartFarm/Notifikasi")
-        .push();
-    await notifRef.set({
+    // 🚫 Jika semuanya normal → jangan simpan notifikasi
+    if (title == null && message.isEmpty) return;
+
+    // 🕒 Format waktu agar lebih mudah dibaca
+    final formattedTime = DateFormat('dd MMM yyyy, HH:mm:ss')
+        .format(DateTime.tryParse(waktu) ?? DateTime.now());
+
+    // 💾 Simpan ke Firebase Realtime Database
+    await notifRef.push().set({
       "title": title,
       "message": message,
       "color": color,
       "image": image,
-      "timestamp": DateTime.now().toIso8601String(),
+      "timestamp": formattedTime, // ✅ waktu dari Riwayat_Suhu
     });
   }
 
@@ -81,26 +106,19 @@ class _NotificationPageState extends State<NotificationPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green,
-        elevation: 0,
-        leading: IconButton(
-          icon: Image.asset(
-            'assets/image/back.png', // pastikan file ini ada di folder assets/image/
-            width: 24,
-            height: 24,
-          ),
-          onPressed: () {
-            Navigator.pop(context); // kembali ke halaman sebelumnya
-          },
-        ),
         title: const Text(
           "Notifikasi SmartFarm",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
+        leading: IconButton(
+          icon: Image.asset('assets/image/back.png', width: 24, height: 24),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
 
       body: StreamBuilder(
-        stream: FirebaseDatabase.instance.ref("SmartFarm/Notifikasi").onValue,
+        stream: notifRef.onValue,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -110,9 +128,13 @@ class _NotificationPageState extends State<NotificationPage> {
             return const Center(child: Text("Belum ada notifikasi."));
           }
 
-          final data = (snapshot.data!.snapshot.value as Map).values.toList();
+          final data = (snapshot.data!.snapshot.value as Map).values
+              .toList()
+              .reversed
+              .toList();
 
           return ListView.builder(
+            reverse: true,
             itemCount: data.length,
             itemBuilder: (context, index) {
               final notif = Map<String, dynamic>.from(data[index]);
@@ -122,12 +144,27 @@ class _NotificationPageState extends State<NotificationPage> {
                 child: ListTile(
                   leading: Image.asset(
                     notif["image"] ?? "assets/image/logo.png",
+                    width: 40,
+                    height: 40,
                   ),
                   title: Text(
                     notif["title"] ?? "",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  subtitle: Text(notif["message"] ?? ""),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(notif["message"] ?? ""),
+                      const SizedBox(height: 5),
+                      Text(
+                        "🕒 ${notif["timestamp"] ?? ''}",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },
@@ -140,13 +177,13 @@ class _NotificationPageState extends State<NotificationPage> {
   Color _getColor(String? color) {
     switch (color) {
       case "red":
-        return const Color.fromARGB(255, 255, 0, 25);
+        return const Color.fromARGB(255, 255, 120, 120);
       case "blue":
-        return const Color.fromARGB(255, 0, 140, 255);
+        return const Color.fromARGB(255, 120, 180, 255);
       case "green":
-        return const Color.fromARGB(255, 0, 251, 8);
+        return const Color.fromARGB(255, 120, 255, 160);
       default:
-        return const Color.fromARGB(255, 140, 137, 137);
+        return const Color.fromARGB(255, 64, 64, 64);
     }
   }
 }

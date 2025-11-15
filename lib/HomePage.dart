@@ -5,12 +5,13 @@ import 'NotificationPage.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart'; // ✅ Import intl
 import 'package:firebase_auth/firebase_auth.dart';
-import 'Pageawal.dart';
+import 'main.dart';
+import 'HamaPage.dart';
+import 'GrafikSensorPage.dart';
 
 class HomePage extends StatefulWidget {
   final String? userName;
   final String? userLocation;
-
   const HomePage({super.key, this.userName, this.userLocation});
 
   @override
@@ -19,8 +20,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
-  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
-  List<Map<String, dynamic>> lahanData = [];
+  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref("SmartFarm");
+  final String? userId = FirebaseAuth.instance.currentUser?.uid;
 
   @override
   void initState() {
@@ -29,39 +30,57 @@ class _HomePageState extends State<HomePage> {
     // 🎬 Inisialisasi video
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
-        setState(() {});
-        _controller
-          ..setLooping(true)
-          ..setVolume(0.5)
-          ..play();
+        // Pastikan widget masih aktif sebelum setState (menghindari crash)
+        if (mounted) {
+          setState(() {});
+          _controller
+            ..setLooping(true)
+            ..setVolume(0.5)
+            ..play();
+        }
       });
   }
 
-  /// ✅ Fungsi menyimpan data suhu & kelembapan per jam
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// ✅ Simpan data suhu & kelembapan hanya 1x per jam
   Future<void> _simpanDataPerJam(Map<String, dynamic> data) async {
     final suhu = data['suhu'];
     final kelembaban = data['kelembaban_udara'];
+
+    // ✅ Pastikan data valid
     if (suhu == null || kelembaban == null) return;
 
     final now = DateTime.now();
     final jamKey = DateFormat('yyyy-MM-dd-HH:00').format(now);
 
-    final ref = FirebaseDatabase.instance.ref("SmartFarm/Riwayat_Suhu/$jamKey");
+    // ✅ Rujukan lokasi penyimpanan per user & per jam
+    final ref = FirebaseDatabase.instance.ref(
+      "SmartFarm/User/$userId/Riwayat_Suhu/$jamKey",
+    );
 
-    // ✅ Cegah duplikasi (1x per jam)
-    final exists = (await ref.get()).exists;
-    if (!exists) {
-      await ref.set({
-        'suhu': suhu,
-        'kelembaban': kelembaban,
-        'timestamp': now.toIso8601String(),
-      });
+    // ✅ Cegah duplikasi penyimpanan dalam jam yang sama
+    final snapshot = await ref.get();
+    if (snapshot.exists) {
+      // Sudah ada data jam ini → tidak disimpan ulang
+      return;
     }
+
+    // ✅ Simpan sekali untuk jam ini
+    await ref.set({
+      'suhu': suhu,
+      'kelembaban': kelembaban,
+      'timestamp': now.toIso8601String(),
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final DatabaseReference iotRef = _dbRef.child("SmartFarm/Data_Terbaru");
+    final DatabaseReference iotRef = _dbRef.child("/SmartFarm/Data_Terbaru");
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -79,7 +98,7 @@ class _HomePageState extends State<HomePage> {
                   const Text(
                     'SMART FARM',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
                     ),
@@ -89,7 +108,7 @@ class _HomePageState extends State<HomePage> {
                   // 🔔 Tombol Notifikasi
                   IconButton(
                     tooltip: 'Lihat Notifikasi',
-                    iconSize: 36,
+                    iconSize: 28,
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -104,7 +123,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 1),
 
                   // 🚪 Tombol Logout
                   IconButton(
@@ -141,7 +160,7 @@ class _HomePageState extends State<HomePage> {
                             Navigator.pushAndRemoveUntil(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => const PageAwal(),
+                                builder: (context) => const StartSetupPage(),
                               ),
                               (route) => false,
                             );
@@ -236,70 +255,95 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                     const SizedBox(height: 20),
-                    // ================= Suhu & Kelembapan =================
-                    const Center(child: SectionTitle(title: 'Suhu Udara')),
-                    const SizedBox(height: 10),
-
-                    StreamBuilder(
-                      stream: iotRef.onValue,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData ||
-                            snapshot.data!.snapshot.value == null) {
-                          return const Center(
-                            child: Text(
-                              "Belum ada data dari Firebase",
-                              style: TextStyle(color: Colors.red, fontSize: 18),
-                              textAlign: TextAlign.center,
-                            ),
-                          );
-                        }
-
-                        final data = Map<String, dynamic>.from(
-                          snapshot.data!.snapshot.value as Map,
-                        );
-
-                        final suhu =
-                            double.tryParse(data['suhu'].toString()) ?? 0;
-                        final kelembaban =
-                            double.tryParse(
-                              data['kelembaban_udara'].toString(),
-                            ) ??
-                            0;
-
-                        // ✅ Simpan data ke riwayat per jam
-                        _simpanDataPerJam(data);
-
-                        return Column(
-                          children: [
-                            Center(
-                              child: Text(
-                                "$suhu °C",
-                                style: const TextStyle(
-                                  fontSize: 24,
+                    // ================= button Tambahan =================
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            child: ElevatedButton(
+                              onPressed: () {},
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                elevation: 4,
+                              ),
+                              child: const Text(
+                                'Sensor Lahan',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 1,
                                   fontWeight: FontWeight.bold,
-                                  color: Colors.green,
                                 ),
-                                textAlign: TextAlign.center,
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Center(
-                              child: Text(
-                                "Kelembapan Udara: $kelembaban %",
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.black54,
+                          ),
+                        ),
+
+                        Expanded(
+                          child: Container(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const Hamapage(),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
                                 ),
-                                textAlign: TextAlign.center,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                elevation: 4,
+                              ),
+                              child: const Text(
+                                'Sensor Hama',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ],
-                        );
-                      },
+                          ),
+                        ),
+                      ],
                     ),
 
                     const SizedBox(height: 10),
 
+                    // ================= Tips Tambahan =================
+                    const SectionTitle(title: 'Tips'),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Card(
+                        elevation: 2,
+                        color: Colors.green,
+                        child: Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: Text(
+                            'Lakukan penyiraman secara rutin pada tanaman karna tanah ke keringan.',
+                            style: TextStyle(
+                              color: Color.fromARGB(221, 255, 255, 255),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // ================= Suhu  =================
+                    const Center(child: SectionTitle(title: 'Suhu Udara')),
+                    const SizedBox(height: 1),
                     // ================= Grafik Suhu per Jam =================
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -307,7 +351,7 @@ class _HomePageState extends State<HomePage> {
                         child: Text(
                           "Grafik Suhu per Jam",
                           style: TextStyle(
-                            fontSize: 20,
+                            fontSize: 15,
                             fontWeight: FontWeight.bold,
                             color: Color.fromARGB(255, 29, 29, 29),
                           ),
@@ -319,7 +363,7 @@ class _HomePageState extends State<HomePage> {
 
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
-                          .ref("SmartFarm/Riwayat_Suhu")
+                          .ref("SmartFarm/User/$userId/Riwayat_Suhu")
                           .onValue,
                       builder: (context, snapshot) {
                         if (!snapshot.hasData ||
@@ -394,44 +438,17 @@ class _HomePageState extends State<HomePage> {
 
                     const SizedBox(height: 5),
 
-                    // ================= parameter Suhu =================
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: const [
-                          WeatherCard(label: '<20°C', description: 'Dingin'),
-                          WeatherCard(label: '25–30°C', description: 'Normal'),
-                          WeatherCard(label: '>35°C', description: 'Panas'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // ================= Kelembapan Tanah =================
-                    const Center(
-                      child: SectionTitle(title: 'Kelembapan Tanah'),
-                    ),
-
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
                           .ref("SmartFarm/Data_Terbaru")
                           .onValue,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-
                         if (!snapshot.hasData ||
                             snapshot.data!.snapshot.value == null) {
                           return const Center(
                             child: Text(
                               "Belum ada data dari Firebase",
-                              style: TextStyle(color: Colors.red),
+                              style: TextStyle(color: Colors.red, fontSize: 18),
                               textAlign: TextAlign.center,
                             ),
                           );
@@ -441,18 +458,22 @@ class _HomePageState extends State<HomePage> {
                           snapshot.data!.snapshot.value as Map,
                         );
 
-                        final kelembapanTanah =
-                            data['kelembapan_tanah']?.toString() ?? "0";
-                        final keteranganKelembapan =
-                            data['keterangan_tanah']?.toString() ?? "Stabil";
+                        final suhu =
+                            double.tryParse(data['suhu'].toString()) ?? 0;
+                        final kelembaban =
+                            double.tryParse(
+                              data['kelembaban_udara'].toString(),
+                            ) ??
+                            0;
+
+                        // ✅ Simpan data ke riwayat per jam
+                        _simpanDataPerJam(data);
 
                         return Column(
                           children: [
-                            const SizedBox(height: 20),
-
                             Center(
                               child: Text(
-                                "$kelembapanTanah %",
+                                "$suhu °C",
                                 style: const TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -461,14 +482,12 @@ class _HomePageState extends State<HomePage> {
                                 textAlign: TextAlign.center,
                               ),
                             ),
-
                             const SizedBox(height: 10),
-
                             Center(
                               child: Text(
-                                keteranganKelembapan,
+                                "Kelembapan Udara: $kelembaban %",
                                 style: const TextStyle(
-                                  fontSize: 20,
+                                  fontSize: 18,
                                   color: Colors.black54,
                                 ),
                                 textAlign: TextAlign.center,
@@ -480,6 +499,67 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                     const SizedBox(height: 5),
+                    // ================= Parameter Suhu =================
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: const [
+                          WeatherCard(label: '<40 °C', description: 'Panas'),
+                          WeatherCard(label: '20-40 °C', description: 'Normal'),
+                          WeatherCard(label: '>20 °C', description: 'Dingin'),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // ================= Kelembapan Tanah =================
+                    Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const SectionTitle(title: 'Kelembapan Tanah'),
+                          const SizedBox(height: 10),
+                          StreamBuilder(
+                            stream: FirebaseDatabase.instance
+                                .ref("SmartFarm/Data_Terbaru")
+                                .onValue,
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData ||
+                                  snapshot.data!.snapshot.value == null) {
+                                return const Text(
+                                  "Belum ada data dari Firebase",
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 18,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                );
+                              }
+
+                              final data = Map<String, dynamic>.from(
+                                snapshot.data!.snapshot.value as Map,
+                              );
+
+                              final tanah =
+                                  data['kelembaban_tanah']?.toString() ?? "0";
+                              return Text(
+                                "$tanah %",
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                                textAlign: TextAlign.center,
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                    ),
 
                     // ================= Parameter Kelembapan =================
                     Padding(
@@ -497,7 +577,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
 
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 30),
 
                     // ================= Intensitas Cahaya =================
                     const Center(
@@ -589,30 +669,6 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                     ),
-
-                    const SizedBox(height: 32),
-
-                    // ================= Tips Tambahan =================
-                    const SectionTitle(title: 'Tips'),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Card(
-                        elevation: 2,
-                        color: Color(0xFFFFF3E0),
-                        child: Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: Text(
-                            'Lakukan penyemprotan pestisida secara rutin pada tanaman.',
-                            style: TextStyle(color: Colors.black87),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    // ================= Grafik Serangan Hama =================
-                    const SectionTitle(title: 'Serangan Hama'),
-                    const PestChart(),
-
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -674,80 +730,9 @@ class SectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: const TextStyle(
-          fontSize: 20,
+          fontSize: 25,
           fontWeight: FontWeight.bold,
           color: Colors.green,
-        ),
-      ),
-    );
-  }
-}
-
-// ================= Grafik Serangan Hama ===================
-
-class PestChart extends StatelessWidget {
-  const PestChart({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final data = [22, 45, 17, 38, 28, 33, 41];
-    const days = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-
-    return Container(
-      height: 220,
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3)),
-        ],
-      ),
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: 60,
-          barGroups: List.generate(data.length, (index) {
-            return BarChartGroupData(
-              x: index,
-              barRods: [
-                BarChartRodData(
-                  toY: data[index].toDouble(),
-                  color: Colors.green,
-                  width: 14,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              ],
-            );
-          }),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(showTitles: true, reservedSize: 28),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  return SideTitleWidget(
-                    axisSide: meta.axisSide,
-                    child: Text(
-                      days[value.toInt()],
-                      style: const TextStyle(fontSize: 11),
-                    ),
-                  );
-                },
-              ),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-          ),
-          gridData: const FlGridData(show: true),
-          borderData: FlBorderData(show: false),
         ),
       ),
     );
