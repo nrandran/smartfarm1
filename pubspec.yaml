@@ -16,15 +16,17 @@ dependencies:
   firebase_database: ^11.3.10
   firebase_analytics: ^11.6.0
   crypto: ^3.0.2
-  intl: ^0.20.2
+  intl: any
   firebase_auth: ^5.1.2
+  shared_preferences: ^2.2.2
+  rename_app: ^1.6.5
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   fl_chart: ^0.66.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
-  flutter_launcher_icons: ^0.13.1
 
 flutter_launcher_icons:
   android: true
@@ -37,12 +39,14 @@ flutter:
     - assets/image/cuaca.png
     - assets/image/background.png
     - assets/image/logo.png
+    - assets/image/logobg.png
     - assets/image/vidio.png
     - assets/image/backgroundfull.jpg
-    - assets/image/notif.jpg
+    - assets/image/notif.png
     - assets/image/back.png
     - assets/image/hama.png
     - assets/image/suhu.png
     - assets/image/tips.png
-    - assets/image/lokasi.jpg
+    - assets/image/lokasi.png
     - assets/image/logout.png
+    - assets/image/user.png

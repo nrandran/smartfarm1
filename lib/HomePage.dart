@@ -1,18 +1,28 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:video_player/video_player.dart';
-import 'NotificationPage.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:intl/intl.dart'; // ✅ Import intl
 import 'package:firebase_auth/firebase_auth.dart';
-import 'main.dart';
-import 'HamaPage.dart';
-import 'GrafikSensorPage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'DeviceControlPage.dart';
+import 'NotificationPage.dart';
+import 'ProfilPage.dart';
+import 'AITipsCard.dart';
+import 'data_logger_service.dart';
 
 class HomePage extends StatefulWidget {
+  final String userId;
   final String? userName;
   final String? userLocation;
-  const HomePage({super.key, this.userName, this.userLocation});
+
+  const HomePage({
+    super.key,
+    required this.userId,
+    this.userName,
+    this.userLocation,
+  });
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -20,68 +30,368 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
-  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref("SmartFarm");
-  final String? userId = FirebaseAuth.instance.currentUser?.uid;
+  String userName = "";
+  String userLocation = "";
+  Timer? historyTimer;
+
+  List<double> suhuList = [];
+  List<double> cahayaList = [];
+  List<double> tanahList = [];
+  List<String> times = [];
 
   @override
   void initState() {
     super.initState();
+    loadUserData();
 
-    // 🎬 Inisialisasi video
+    Future<void> loadHistory() async {
+      final ref = FirebaseDatabase.instance.ref(
+        "SmartFarm/User/${widget.userId}/History",
+      );
+
+      final snapshot = await ref.limitToLast(20).get();
+
+      if (!snapshot.exists) return;
+
+      final Map data = snapshot.value as Map;
+
+      // Pastikan list kosong dulu agar tidak double data
+      suhuList.clear();
+      cahayaList.clear();
+      tanahList.clear();
+      times.clear();
+
+      // Convert Map → List
+      data.forEach((key, value) {
+        final item = Map<String, dynamic>.from(value);
+
+        suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
+        cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
+        tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
+        times.add(item['waktu'].toString());
+      });
+
+      // Pastikan urutan data dari yang lama ke baru
+      suhuList = List.from(suhuList);
+      cahayaList = List.from(cahayaList);
+      tanahList = List.from(tanahList);
+      times = List.from(times);
+
+      setState(() {});
+    }
+
+    loadHistory();
+
+    // Simpan data history setiap 5 detik
+    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      saveUserSensorHistory();
+      // === LOAD HISTORY SENSOR DARI FIREBASE ===
+      Future<void> loadHistory() async {
+        final snapshot = await FirebaseDatabase.instance
+            .ref("SmartFarm/User/${widget.userId}/History")
+            .get();
+
+        if (!snapshot.exists) return;
+
+        final history = Map<String, dynamic>.from(snapshot.value as Map);
+
+        suhuList.clear();
+        cahayaList.clear();
+        tanahList.clear();
+        times.clear();
+
+        history.forEach((key, value) {
+          final item = Map<String, dynamic>.from(value);
+
+          suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
+          cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
+          tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
+          times.add(item['waktu']?.toString() ?? "");
+        });
+
+        setState(() {});
+      }
+    });
+
+    // Inisialisasi video
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
-        // Pastikan widget masih aktif sebelum setState (menghindari crash)
         if (mounted) {
           setState(() {});
           _controller
             ..setLooping(true)
-            ..setVolume(0.5)
+            ..setVolume(0.0)
             ..play();
         }
       });
+
+    // Listen data terbaru dari SmartFarm/Data_Terbaru
+    _listenDataTerbaru();
+  }
+
+  void _listenDataTerbaru() {
+    FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
+      event,
+    ) {
+      if (event.snapshot.value != null) {
+        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+
+        final suhu = double.tryParse(data['suhu'].toString()) ?? 0;
+        final cahaya =
+            double.tryParse(data['intensitas_cahaya'].toString()) ?? 0;
+        final tanah =
+            double.tryParse(data['persentase_kelembapan_tanah'].toString()) ??
+            0.0;
+
+        final waktu = data['waktu']?.toString() ?? "";
+
+        setState(() {
+          suhuList.add(suhu);
+          cahayaList.add(cahaya);
+          tanahList.add(tanah);
+          times.add(waktu);
+
+          // Batasi 20 data terakhir
+          if (suhuList.length > 20) {
+            suhuList.removeAt(0);
+            cahayaList.removeAt(0);
+            tanahList.removeAt(0);
+            times.removeAt(0);
+          }
+        });
+      }
+    });
+  }
+
+  Future<void> loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userName = prefs.getString("userName") ?? widget.userName ?? "";
+      userLocation =
+          prefs.getString("userLocation") ?? widget.userLocation ?? "";
+    });
+  }
+
+  void saveUserSensorHistory() {
+    DataLoggerService.saveUserSensor(widget.userId, null);
+  }
+
+  // Widget untuk grafik
+  Widget buildChart(String title, List<double> dataList, Color lineColor) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      height: 250,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(show: true),
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        int index = value.round();
+
+                        if (index < 0 || index >= times.length) {
+                          return const SizedBox();
+                        }
+
+                        // Pastikan panjang string aman sebelum substring
+                        final txt = times[index];
+                        if (txt.length < 16) return const SizedBox();
+
+                        return Text(
+                          txt.substring(11, 16),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                minY: 0,
+                maxY: 100,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: List.generate(
+                      dataList.length,
+                      (i) => FlSpot(i.toDouble(), dataList[i]),
+                    ),
+                    isCurved: true,
+                    color: lineColor,
+                    barWidth: 3,
+                    dotData: FlDotData(show: true),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildCahayaChart(String title, List<double> dataList) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 2,
+            blurRadius: 5,
+          ),
+        ],
+      ),
+      height: 250,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: LineChart(
+              LineChartData(
+                minY: 0,
+                maxY: 10000,
+
+                // ======== Garis tengah manual (5000) ========
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    HorizontalLine(
+                      y: 5000,
+                      color: Colors.grey,
+                      strokeWidth: 1,
+                      dashArray: [5, 5],
+                      label: HorizontalLineLabel(
+                        show: true,
+                        labelResolver: (_) => "5000",
+                        alignment: Alignment.centerRight,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                gridData: FlGridData(show: true),
+
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        int index = value.round();
+
+                        if (index < 0 || index >= times.length) {
+                          return const SizedBox();
+                        }
+
+                        // Pastikan panjang string aman sebelum substring
+                        final txt = times[index];
+                        if (txt.length < 16) return const SizedBox();
+
+                        return Text(
+                          txt.substring(11, 16),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 45,
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0 || value == 5000 || value == 10000) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: const TextStyle(fontSize: 10),
+                          );
+                        }
+                        return const SizedBox();
+                      },
+                    ),
+                  ),
+                ),
+
+                borderData: FlBorderData(show: false),
+
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: List.generate(
+                      dataList.length,
+                      (i) => FlSpot(i.toDouble(), dataList[i]),
+                    ),
+                    isCurved: true,
+                    color: Colors.orange,
+                    barWidth: 3,
+                    dotData: FlDotData(show: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> clearSuhuHistory() async {
+    try {
+      await FirebaseDatabase.instance
+          .ref("SmartFarm/User/${widget.userId}/History")
+          .remove();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Riwayat grafik berhasil dihapus")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Gagal menghapus: $e")));
+    }
   }
 
   @override
   void dispose() {
+    historyTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
-  /// ✅ Simpan data suhu & kelembapan hanya 1x per jam
-  Future<void> _simpanDataPerJam(Map<String, dynamic> data) async {
-    final suhu = data['suhu'];
-    final kelembaban = data['kelembaban_udara'];
-
-    // ✅ Pastikan data valid
-    if (suhu == null || kelembaban == null) return;
-
-    final now = DateTime.now();
-    final jamKey = DateFormat('yyyy-MM-dd-HH:00').format(now);
-
-    // ✅ Rujukan lokasi penyimpanan per user & per jam
-    final ref = FirebaseDatabase.instance.ref(
-      "SmartFarm/User/$userId/Riwayat_Suhu/$jamKey",
-    );
-
-    // ✅ Cegah duplikasi penyimpanan dalam jam yang sama
-    final snapshot = await ref.get();
-    if (snapshot.exists) {
-      // Sudah ada data jam ini → tidak disimpan ulang
-      return;
-    }
-
-    // ✅ Simpan sekali untuk jam ini
-    await ref.set({
-      'suhu': suhu,
-      'kelembaban': kelembaban,
-      'timestamp': now.toIso8601String(),
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final DatabaseReference iotRef = _dbRef.child("/SmartFarm/Data_Terbaru");
-
     return Scaffold(
       backgroundColor: Colors.grey[100],
       body: SafeArea(
@@ -118,66 +428,33 @@ class _HomePageState extends State<HomePage> {
                       );
                     },
                     icon: const CircleAvatar(
-                      backgroundImage: AssetImage('assets/image/notif.jpg'),
+                      backgroundImage: AssetImage('assets/image/notif.png'),
                       backgroundColor: Colors.white,
                     ),
                   ),
 
                   const SizedBox(width: 1),
 
-                  // 🚪 Tombol Logout
+                  // 🔄 Tombol ke Halaman Profil
                   IconButton(
-                    tooltip: 'Keluar dari akun',
+                    tooltip: 'Lihat Profil',
                     iconSize: 32,
-                    onPressed: () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Konfirmasi Logout'),
-                          content: const Text(
-                            'Apakah Anda yakin ingin keluar dari aplikasi?',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfilPage(
+                            userId: widget.userId,
+                            userName: widget.userName,
+                            userLocation: widget.userLocation,
                           ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Batal'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text(
-                                'Logout',
-                                style: TextStyle(color: Colors.red),
-                              ),
-                            ),
-                          ],
                         ),
                       );
-
-                      if (confirm == true) {
-                        try {
-                          await FirebaseAuth.instance.signOut();
-                          if (context.mounted) {
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const StartSetupPage(),
-                              ),
-                              (route) => false,
-                            );
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Gagal logout: $e')),
-                            );
-                          }
-                        }
-                      }
                     },
                     icon: Image.asset(
-                      'assets/image/logout.png',
-                      width: 28,
-                      height: 28,
+                      'assets/image/user.png',
+                      width: 45,
+                      height: 45,
                     ),
                   ),
                 ],
@@ -215,7 +492,7 @@ class _HomePageState extends State<HomePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Halo, ${widget.userName ?? ""}',
+                                'Halo, $userName',
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w600,
@@ -223,6 +500,8 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ],
                           ),
+
+                          // Lokasi container
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -235,13 +514,13 @@ class _HomePageState extends State<HomePage> {
                             child: Row(
                               children: [
                                 Image.asset(
-                                  'assets/image/lokasi.jpg',
+                                  'assets/image/lokasi.png',
                                   width: 20,
                                   height: 20,
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  widget.userLocation ?? "Yogyakarta",
+                                  userLocation,
                                   style: const TextStyle(
                                     color: Colors.black,
                                     fontWeight: FontWeight.w500,
@@ -255,259 +534,166 @@ class _HomePageState extends State<HomePage> {
                     ),
 
                     const SizedBox(height: 20),
-                    // ================= button Tambahan =================
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            child: ElevatedButton(
-                              onPressed: () {},
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 4,
-                              ),
-                              child: const Text(
-                                'Sensor Lahan',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 1,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        Expanded(
-                          child: Container(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const Hamapage(),
-                                  ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 4,
-                              ),
-                              child: const Text(
-                                'Sensor Hama',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 10),
 
                     // ================= Tips Tambahan =================
                     const SectionTitle(title: 'Tips'),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Card(
-                        elevation: 2,
-                        color: Colors.green,
-                        child: Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: Text(
-                            'Lakukan penyiraman secara rutin pada tanaman karna tanah ke keringan.',
-                            style: TextStyle(
-                              color: Color.fromARGB(221, 255, 255, 255),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 10),
+                    const AITipsCard(),
                     const SizedBox(height: 10),
 
-                    // ================= Suhu  =================
+                    // ================= Suhu =================
                     const Center(child: SectionTitle(title: 'Suhu Udara')),
-                    const SizedBox(height: 1),
-                    // ================= Grafik Suhu per Jam =================
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Center(
-                        child: Text(
-                          "Grafik Suhu per Jam",
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: Color.fromARGB(255, 29, 29, 29),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    StreamBuilder(
-                      stream: FirebaseDatabase.instance
-                          .ref("SmartFarm/User/$userId/Riwayat_Suhu")
-                          .onValue,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData ||
-                            snapshot.data!.snapshot.value == null) {
-                          return const Center(
-                            child: Text("Belum ada data riwayat"),
-                          );
-                        }
-
-                        final data = Map<String, dynamic>.from(
-                          snapshot.data!.snapshot.value as Map,
-                        );
-
-                        final entries = data.entries.toList()
-                          ..sort((a, b) => a.key.compareTo(b.key));
-
-                        final suhuPoints = entries.map((e) {
-                          final value = Map<String, dynamic>.from(e.value);
-                          return FlSpot(
-                            entries.indexOf(e).toDouble(),
-                            double.tryParse(value['suhu'].toString()) ?? 0,
-                          );
-                        }).toList();
-
-                        final labels = entries
-                            .map((e) => e.key.split('-').last)
-                            .toList();
-
-                        return SizedBox(
-                          height: 200,
-                          child: LineChart(
-                            LineChartData(
-                              borderData: FlBorderData(show: true),
-                              gridData: FlGridData(show: false),
-                              titlesData: FlTitlesData(
-                                leftTitles: AxisTitles(
-                                  sideTitles: SideTitles(showTitles: true),
-                                ),
-                                bottomTitles: AxisTitles(
-                                  sideTitles: SideTitles(
-                                    showTitles: true,
-                                    getTitlesWidget: (value, meta) {
-                                      final index = value.toInt();
-                                      if (index < 0 || index >= labels.length) {
-                                        return const Text('');
-                                      }
-                                      return Text(
-                                        labels[index].replaceAll(':00', ''),
-                                        style: const TextStyle(fontSize: 10),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                              lineBarsData: [
-                                LineChartBarData(
-                                  isCurved: true,
-                                  spots: suhuPoints,
-                                  barWidth: 3,
-                                  color: Colors.green,
-                                  belowBarData: BarAreaData(
-                                    show: true,
-                                    color: Colors.green.withOpacity(0.2),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
                     const SizedBox(height: 5),
 
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
                           .ref("SmartFarm/Data_Terbaru")
                           .onValue,
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData ||
-                            snapshot.data!.snapshot.value == null) {
-                          return const Center(
-                            child: Text(
-                              "Belum ada data dari Firebase",
-                              style: TextStyle(color: Colors.red, fontSize: 18),
-                              textAlign: TextAlign.center,
-                            ),
-                          );
+                      builder: (context, controlSnap) {
+                        if (!controlSnap.hasData) {
+                          return const SizedBox();
                         }
 
-                        final data = Map<String, dynamic>.from(
-                          snapshot.data!.snapshot.value as Map,
-                        );
+                        final sensorOn =
+                            controlSnap.data!.snapshot.value ?? true;
 
-                        final suhu =
-                            double.tryParse(data['suhu'].toString()) ?? 0;
-                        final kelembaban =
-                            double.tryParse(
-                              data['kelembaban_udara'].toString(),
-                            ) ??
-                            0;
+                        if (sensorOn == false) {
+                          return const SizedBox();
+                        }
 
-                        // ✅ Simpan data ke riwayat per jam
-                        _simpanDataPerJam(data);
-
-                        return Column(
-                          children: [
-                            Center(
-                              child: Text(
-                                "$suhu °C",
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
+                        // ---- Sensor ON → Ambil Data Terbaru ----
+                        return StreamBuilder(
+                          stream: FirebaseDatabase.instance
+                              .ref("SmartFarm/Data_Terbaru")
+                              .onValue,
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData ||
+                                snapshot.data!.snapshot.value == null) {
+                              return const Center(
+                                child: Text(
+                                  "Tidak Ada Data",
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 18,
+                                  ),
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Center(
-                              child: Text(
-                                "Kelembapan Udara: $kelembaban %",
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  color: Colors.black54,
+                              );
+                            }
+
+                            final data = Map<String, dynamic>.from(
+                              snapshot.data!.snapshot.value as Map,
+                            );
+
+                            final suhu =
+                                double.tryParse(data['suhu'].toString()) ?? 0;
+                            final kelembaban =
+                                double.tryParse(
+                                  data['kelembapan_udara'].toString(),
+                                ) ??
+                                0;
+                            final suhu_status =
+                                data['suhu_status']?.toString() ??
+                                "Tidak ada data";
+
+                            return Column(
+                              children: [
+                                Center(
+                                  child: Text(
+                                    "$suhu °C",
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: Text(
+                                    "Kelembapan Udara: $kelembaban %",
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.black54,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: Text(
+                                    "Status: $suhu_status",
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.black54,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
+                    const SizedBox(height: 10),
 
-                    const SizedBox(height: 5),
+                    // ================= Grafik Gabungan =================
+                    Column(
+                      children: [buildChart("Suhu (°C)", suhuList, Colors.red)],
+                    ),
+
+                    // Tombol Reset Grafik
+                    Center(
+                      child: TextButton.icon(
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text("Hapus Grafik?"),
+                              content: const Text(
+                                "Data grafik akan dihapus dan dimulai dari kosong.",
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text("Batal"),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    Navigator.pop(ctx);
+                                    clearSuhuHistory();
+                                  },
+                                  child: const Text(
+                                    "Hapus",
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                        ),
+                        label: const Text(
+                          "Reset Grafik Saya",
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+
                     // ================= Parameter Suhu =================
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: const [
-                          WeatherCard(label: '<40 °C', description: 'Panas'),
+                          WeatherCard(label: '<20 °C', description: 'Dingin'),
                           WeatherCard(label: '20-40 °C', description: 'Normal'),
-                          WeatherCard(label: '>20 °C', description: 'Dingin'),
+                          WeatherCard(label: '>35 °C', description: 'Panas'),
                         ],
                       ),
                     ),
@@ -520,17 +706,26 @@ class _HomePageState extends State<HomePage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          const SectionTitle(title: 'Kelembapan Tanah'),
+                          const SectionTitle(title: 'Kelembaban Tanah'),
                           const SizedBox(height: 10),
+
+                          // ====== StreamBuilder Kontrol Sensor ======
                           StreamBuilder(
                             stream: FirebaseDatabase.instance
                                 .ref("SmartFarm/Data_Terbaru")
                                 .onValue,
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData ||
-                                  snapshot.data!.snapshot.value == null) {
+                            builder: (context, controlSnap) {
+                              if (!controlSnap.hasData) {
+                                return const SizedBox(); // loading kecil
+                              }
+
+                              final sensorOn =
+                                  controlSnap.data!.snapshot.value ?? true;
+
+                              // Jika sensor OFF
+                              if (sensorOn == false) {
                                 return const Text(
-                                  "Belum ada data dari Firebase",
+                                  "Sensor Dimatikan",
                                   style: TextStyle(
                                     color: Colors.red,
                                     fontSize: 18,
@@ -539,28 +734,90 @@ class _HomePageState extends State<HomePage> {
                                 );
                               }
 
-                              final data = Map<String, dynamic>.from(
-                                snapshot.data!.snapshot.value as Map,
-                              );
+                              // ====== Sensor ON → Ambil data ======
+                              return StreamBuilder(
+                                stream: FirebaseDatabase.instance
+                                    .ref("SmartFarm/Data_Terbaru")
+                                    .onValue,
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData ||
+                                      snapshot.data!.snapshot.value == null) {
+                                    return const Text(
+                                      "Tidak Ada Data",
+                                      style: TextStyle(
+                                        color: Colors.red,
+                                        fontSize: 18,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    );
+                                  }
 
-                              final tanah =
-                                  data['kelembaban_tanah']?.toString() ?? "0";
-                              return Text(
-                                "$tanah %",
-                                style: const TextStyle(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                                textAlign: TextAlign.center,
+                                  final data = Map<String, dynamic>.from(
+                                    snapshot.data!.snapshot.value as Map,
+                                  );
+
+                                  final tanah =
+                                      double.tryParse(
+                                        data['persentase_kelembapan_tanah']
+                                            .toString(),
+                                      ) ??
+                                      0.0;
+
+                                  final tanahStatus =
+                                      data['kelembapan_tanah_status']
+                                          ?.toString() ??
+                                      "Tidak ada data";
+
+                                  return Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+
+                                    children: [
+                                      Center(
+                                        child: Text(
+                                          "$tanah %",
+                                          style: const TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+
+                                      // Status
+                                      Text(
+                                        "Status: $tanahStatus",
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          color: Colors.black54,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  );
+                                },
                               );
                             },
                           ),
+
                           const SizedBox(height: 10),
                         ],
                       ),
                     ),
 
+                    // ================= buatkan grafik kelembapan tanah =================
+                    Column(
+                      children: [
+                        buildChart(
+                          "Kelembapan Tanah (%)",
+                          tanahList,
+                          Colors.blue,
+                        ),
+                      ],
+                    ),
                     // ================= Parameter Kelembapan =================
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -584,73 +841,111 @@ class _HomePageState extends State<HomePage> {
                       child: SectionTitle(title: 'Intensitas Cahaya'),
                     ),
 
+                    // === StreamBuilder Kontrol Sensor Cahaya ===
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
                           .ref("SmartFarm/Data_Terbaru")
                           .onValue,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
+                      builder: (context, controlSnap) {
+                        // Jika kontrol belum terbaca → tampilkan loading kecil
+                        if (!controlSnap.hasData) {
+                          return const SizedBox();
                         }
 
-                        if (!snapshot.hasData ||
-                            snapshot.data!.snapshot.value == null) {
+                        final sensorOn =
+                            controlSnap.data!.snapshot.value ?? true;
+
+                        // Jika sensor OFF
+                        if (sensorOn == false) {
                           return const Center(
                             child: Text(
-                              "Belum ada data dari Firebase",
-                              style: TextStyle(color: Colors.red),
+                              "Sensor Dimatikan",
+                              style: TextStyle(color: Colors.red, fontSize: 18),
                               textAlign: TextAlign.center,
                             ),
                           );
                         }
 
-                        final data = Map<String, dynamic>.from(
-                          snapshot.data!.snapshot.value as Map,
-                        );
-
-                        final cahaya =
-                            data['intensitas_cahaya']?.toString() ?? "0";
-                        final keteranganCahaya =
-                            data['keterangan_cahaya']?.toString() ?? "Terang";
-
-                        return Column(
-                          children: [
-                            const SizedBox(height: 20),
-
-                            Center(
-                              child: Text(
-                                "$cahaya Lux",
-                                style: const TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
+                        // === Sensor ON → Ambil data dari Data_Terbaru ===
+                        return StreamBuilder(
+                          stream: FirebaseDatabase.instance
+                              .ref("SmartFarm/Data_Terbaru")
+                              .onValue,
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData ||
+                                snapshot.data!.snapshot.value == null) {
+                              return const Center(
+                                child: Text(
+                                  "Tidak Ada Data",
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 18,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
+                              );
+                            }
 
-                            const SizedBox(height: 10),
+                            final data = Map<String, dynamic>.from(
+                              snapshot.data!.snapshot.value as Map,
+                            );
 
-                            Center(
-                              child: Text(
-                                keteranganCahaya,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  color: Colors.black54,
+                            final cahaya =
+                                double.tryParse(
+                                  data['intensitas_cahaya'].toString(),
+                                ) ??
+                                0.0;
+
+                            final cahayaStatus =
+                                data['intensitas_cahaya_status']?.toString() ??
+                                "Tidak ada data";
+
+                            return Column(
+                              children: [
+                                const SizedBox(height: 20),
+
+                                // Angka intensitas cahaya
+                                Center(
+                                  child: Text(
+                                    "${cahaya.toStringAsFixed(0)} Lux",
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
+
+                                const SizedBox(height: 5),
+
+                                // Status cahaya
+                                Center(
+                                  child: Text(
+                                    "Status: $cahayaStatus",
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      color: Colors.black54,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 10),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),
 
                     const SizedBox(height: 5),
-
+                    //grafik
+                    Column(
+                      children: [
+                        buildCahayaChart("Intensitas Cahaya (lux)", cahayaList),
+                      ],
+                    ),
                     // ================= Parameter Cahaya =================
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+
 import 'daftar_page.dart';
 import 'LoginPage.dart';
 import 'HomePage.dart';
@@ -8,21 +10,57 @@ import 'HomePage.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
   final user = FirebaseAuth.instance.currentUser;
-  runApp(MyApp(isLoggedIn: user != null));
+  Map<String, dynamic>? profile;
+
+  if (user != null) {
+    final snap = await FirebaseDatabase.instance
+        .ref("SmartFarm/User/${user.uid}/profile")
+        .get();
+
+    if (snap.exists) {
+      profile = Map<String, dynamic>.from(snap.value as Map);
+    }
+  }
+
+  runApp(MyApp(
+    isLoggedIn: user != null,
+    userId: user?.uid,
+    userName: profile?["name"],
+    userLocation: profile?["location"],
+  ));
 }
 
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
-  const MyApp({super.key, required this.isLoggedIn});
+  final String? userId;
+  final String? userName;
+  final String? userLocation;
+
+  const MyApp({
+    super.key,
+    required this.isLoggedIn,
+    required this.userId,
+    required this.userName,
+    required this.userLocation,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SMART FARM',
       theme: ThemeData(primarySwatch: Colors.green, fontFamily: 'Arial'),
-      home: isLoggedIn ? const HomePage() : const StartSetupPage(),
       debugShowCheckedModeBanner: false,
+
+      /// Jika sudah login → arahkan ke HomePage dengan data lengkap
+      home: isLoggedIn
+          ? HomePage(
+              userId: userId!,
+              userName: userName,
+              userLocation: userLocation,
+            )
+          : const StartSetupPage(),
     );
   }
 }
@@ -52,9 +90,8 @@ class StartSetupPage extends StatelessWidget {
                     SizedBox(
                       width: 120,
                       height: 120,
-                      child: Image.asset('assets/image/logo.png'),
+                      child: Image.asset('assets/image/logobg.png'),
                     ),
-                    const SizedBox(height: 10),
                     const Text(
                       'SMART FARM',
                       style: TextStyle(
@@ -97,7 +134,9 @@ class StartSetupPage extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 60, vertical: 15),
+                          horizontal: 60,
+                          vertical: 15,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),
@@ -118,7 +157,9 @@ class StartSetupPage extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 60, vertical: 15),
+                          horizontal: 60,
+                          vertical: 15,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),

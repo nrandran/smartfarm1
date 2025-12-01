@@ -14,11 +14,10 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController namaC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref().child("SmartFarm/User");
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("SmartFarm/User");
 
   bool _isLoading = false;
 
-  // 🔐 Fungsi hash password (harus sama seperti di DaftarPage)
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
@@ -39,7 +38,6 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      // Ambil semua data dari node "lahan"
       final snapshot = await dbRef.get();
 
       if (!snapshot.exists) {
@@ -52,42 +50,49 @@ class _LoginPageState extends State<LoginPage> {
 
       final hashedPassword = _hashPassword(password);
       bool found = false;
+
+      String userId = "";
       String lokasi = "";
 
-      // Telusuri semua data di "lahan"
+      // 🔍 Cari user
       for (final child in snapshot.children) {
         final data = Map<String, dynamic>.from(child.value as Map);
 
         if (data['name'] == name && data['password_hash'] == hashedPassword) {
           found = true;
+          userId = child.key!;    // ⭐ INI WAJIB: AMBIL userId dari Firebase KEY
           lokasi = data['lokasi'] ?? "-";
           break;
         }
       }
 
       if (found) {
-        // Jika login berhasil
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Login berhasil!")));
 
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Login berhasil!")),
+        );
+
+        // ⬇ Kirim SEMUA ke HomePage
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => HomePage(userName: name, userLocation: lokasi),
+            builder: (_) => HomePage(
+              userId: userId,
+              userName: name,
+              userLocation: lokasi,
+            ),
           ),
         );
       } else {
-        // Jika login gagal
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Nama atau password salah.")),
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Terjadi kesalahan: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Terjadi kesalahan: $e")),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -118,10 +123,10 @@ class _LoginPageState extends State<LoginPage> {
               child: Text(
                 "Gunakan nama dan password yang sudah terdaftar.",
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Colors.black87),
               ),
             ),
             const SizedBox(height: 24),
+
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
@@ -140,7 +145,9 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
+
             const Spacer(),
+
             Padding(
               padding: const EdgeInsets.only(bottom: 24.0),
               child: ElevatedButton(
@@ -176,12 +183,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // Reusable Input Field
   static Widget _buildInputField({
     required String label,
     required String hint,
     required TextEditingController controller,
-    TextInputType keyboardType = TextInputType.text,
     bool obscureText = false,
   }) {
     return Padding(
@@ -189,23 +194,15 @@ class _LoginPageState extends State<LoginPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          ),
+          Text(label, style: const TextStyle(fontSize: 14)),
           const SizedBox(height: 4),
           TextField(
             controller: controller,
-            keyboardType: keyboardType,
             obscureText: obscureText,
             decoration: InputDecoration(
               hintText: hint,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
-              filled: true,
               fillColor: Colors.grey.shade200,
+              filled: true,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
