@@ -29,6 +29,25 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
   void initState() {
     super.initState();
 
+    void listenSensorControl() {
+      FirebaseDatabase.instance
+          .ref("SmartFarm/User/${widget.userId}/Sensor_Control")
+          .onValue
+          .listen((event) {
+            if (event.snapshot.value == null) return;
+
+            final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+
+            setState(() {
+              suhuOn = data["suhu_on"] ?? true;
+              tanahOn = data["tanah_on"] ?? true;
+              cahayaOn = data["cahaya_on"] ?? true;
+            });
+          });
+    }
+
+    listenSensorControl();
+
     /// 🔥 Set path sensor control khusus user
     controlRef = FirebaseDatabase.instance.ref(
       "SmartFarm/User/${widget.userId}/Sensor_Control",

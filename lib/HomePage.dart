@@ -30,8 +30,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
+
   String userName = "";
   String userLocation = "";
+
   Timer? historyTimer;
 
   List<double> suhuList = [];
@@ -42,78 +44,17 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+
     loadUserData();
-
-    Future<void> loadHistory() async {
-      final ref = FirebaseDatabase.instance.ref(
-        "SmartFarm/User/${widget.userId}/History",
-      );
-
-      final snapshot = await ref.limitToLast(20).get();
-
-      if (!snapshot.exists) return;
-
-      final Map data = snapshot.value as Map;
-
-      // Pastikan list kosong dulu agar tidak double data
-      suhuList.clear();
-      cahayaList.clear();
-      tanahList.clear();
-      times.clear();
-
-      // Convert Map → List
-      data.forEach((key, value) {
-        final item = Map<String, dynamic>.from(value);
-
-        suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
-        cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
-        tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
-        times.add(item['waktu'].toString());
-      });
-
-      // Pastikan urutan data dari yang lama ke baru
-      suhuList = List.from(suhuList);
-      cahayaList = List.from(cahayaList);
-      tanahList = List.from(tanahList);
-      times = List.from(times);
-
-      setState(() {});
-    }
-
     loadHistory();
 
-    // Simpan data history setiap 5 detik
-    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    // ================== TIMER SIMPAN RIWAYAT SETIAP 60 DETIK ==================
+    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       saveUserSensorHistory();
-      // === LOAD HISTORY SENSOR DARI FIREBASE ===
-      Future<void> loadHistory() async {
-        final snapshot = await FirebaseDatabase.instance
-            .ref("SmartFarm/User/${widget.userId}/History")
-            .get();
-
-        if (!snapshot.exists) return;
-
-        final history = Map<String, dynamic>.from(snapshot.value as Map);
-
-        suhuList.clear();
-        cahayaList.clear();
-        tanahList.clear();
-        times.clear();
-
-        history.forEach((key, value) {
-          final item = Map<String, dynamic>.from(value);
-
-          suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
-          cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
-          tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
-          times.add(item['waktu']?.toString() ?? "");
-        });
-
-        setState(() {});
-      }
+      await loadHistory();
     });
 
-    // Inisialisasi video
+    // ================== INISIALISASI VIDEO ==================
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
         if (mounted) {
@@ -125,46 +66,14 @@ class _HomePageState extends State<HomePage> {
         }
       });
 
-    // Listen data terbaru dari SmartFarm/Data_Terbaru
-    _listenDataTerbaru();
+    // ================== LISTEN DATA SENSOR TERBARU ==================
+    listenDataTerbaru();
   }
 
-  void _listenDataTerbaru() {
-    FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
-      event,
-    ) {
-      if (event.snapshot.value != null) {
-        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
-
-        final suhu = double.tryParse(data['suhu'].toString()) ?? 0;
-        final cahaya =
-            double.tryParse(data['intensitas_cahaya'].toString()) ?? 0;
-        final tanah =
-            double.tryParse(data['persentase_kelembapan_tanah'].toString()) ??
-            0.0;
-
-        final waktu = data['waktu']?.toString() ?? "";
-
-        setState(() {
-          suhuList.add(suhu);
-          cahayaList.add(cahaya);
-          tanahList.add(tanah);
-          times.add(waktu);
-
-          // Batasi 20 data terakhir
-          if (suhuList.length > 20) {
-            suhuList.removeAt(0);
-            cahayaList.removeAt(0);
-            tanahList.removeAt(0);
-            times.removeAt(0);
-          }
-        });
-      }
-    });
-  }
-
+  // ================== BAGIAN: LOAD USER DATA ==================
   Future<void> loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
+
     setState(() {
       userName = prefs.getString("userName") ?? widget.userName ?? "";
       userLocation =
@@ -172,11 +81,72 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  // ================== BAGIAN: LISTEN DATA SENSOR REALTIME ==================
+  void listenDataTerbaru() {
+    FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
+      event,
+    ) {
+      if (event.snapshot.value == null) return;
+
+      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+
+      final suhu = double.tryParse(data['suhu'].toString()) ?? 0;
+      final cahaya = double.tryParse(data['intensitas_cahaya'].toString()) ?? 0;
+      final tanah =
+          double.tryParse(data['persentase_kelembapan_tanah'].toString()) ?? 0;
+      final waktu = data['waktu']?.toString() ?? "";
+
+      setState(() {
+        suhuList.add(suhu);
+        cahayaList.add(cahaya);
+        tanahList.add(tanah);
+        times.add(waktu);
+
+        // Batasi maksimal 20 data
+        if (suhuList.length > 20) {
+          suhuList.removeAt(0);
+          cahayaList.removeAt(0);
+          tanahList.removeAt(0);
+          times.removeAt(0);
+        }
+      });
+    });
+  }
+
+  // ================== BAGIAN: LOAD DATA RIWAYAT ==================
+  Future<void> loadHistory() async {
+    final ref = FirebaseDatabase.instance.ref(
+      "SmartFarm/User/${widget.userId}/History",
+    );
+
+    final snapshot = await ref.limitToLast(20).get();
+    if (!snapshot.exists) return;
+
+    final data = Map<String, dynamic>.from(snapshot.value as Map);
+
+    suhuList.clear();
+    cahayaList.clear();
+    tanahList.clear();
+    times.clear();
+
+    data.forEach((key, value) {
+      final item = Map<String, dynamic>.from(value);
+
+      suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
+      cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
+      tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
+      times.add(item['waktu']?.toString() ?? "");
+    });
+
+    setState(() {});
+  }
+
+  // ================== BAGIAN: SIMPAN RIWAYAT SENSOR ==================
   void saveUserSensorHistory() {
     DataLoggerService.saveUserSensor(widget.userId, null);
   }
 
-  // Widget untuk grafik
+  // ================== BAGIAN: BAGIAN PEMBUAT GRAFIK ==================
   Widget buildChart(String title, List<double> dataList, Color lineColor) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -209,22 +179,8 @@ class _HomePageState extends State<HomePage> {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        int index = value.round();
-
-                        if (index < 0 || index >= times.length) {
-                          return const SizedBox();
-                        }
-
-                        // Pastikan panjang string aman sebelum substring
-                        final txt = times[index];
-                        if (txt.length < 16) return const SizedBox();
-
-                        return Text(
-                          txt.substring(11, 16),
-                          style: const TextStyle(fontSize: 10),
-                        );
-                      },
+                      getTitlesWidget: (value, meta) =>
+                          buildTimeTitle(value.toInt()),
                     ),
                   ),
                   leftTitles: AxisTitles(
@@ -254,6 +210,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ================== BAGIAN: GRAFIK INTENSITAS CAHAYA (0–10000) ==================
   Widget buildCahayaChart(String title, List<double> dataList) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -284,7 +241,6 @@ class _HomePageState extends State<HomePage> {
                 minY: 0,
                 maxY: 10000,
 
-                // ======== Garis tengah manual (5000) ========
                 extraLinesData: ExtraLinesData(
                   horizontalLines: [
                     HorizontalLine(
@@ -311,22 +267,8 @@ class _HomePageState extends State<HomePage> {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (value, meta) {
-                        int index = value.round();
-
-                        if (index < 0 || index >= times.length) {
-                          return const SizedBox();
-                        }
-
-                        // Pastikan panjang string aman sebelum substring
-                        final txt = times[index];
-                        if (txt.length < 16) return const SizedBox();
-
-                        return Text(
-                          txt.substring(11, 16),
-                          style: const TextStyle(fontSize: 10),
-                        );
-                      },
+                      getTitlesWidget: (value, meta) =>
+                          buildTimeTitle(value.toInt()),
                     ),
                   ),
                   leftTitles: AxisTitles(
@@ -368,11 +310,23 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // ================== BAGIAN: FORMAT TEKS WAKTU ==================
+  Widget buildTimeTitle(int index) {
+    if (index < 0 || index >= times.length) return const SizedBox();
+    if (times[index].length < 16) return const SizedBox();
+    return Text(
+      times[index].substring(11, 16),
+      style: const TextStyle(fontSize: 10),
+    );
+  }
+
+  // ================== BAGIAN: HAPUS RIWAYAT ==================
   Future<void> clearSuhuHistory() async {
     try {
       await FirebaseDatabase.instance
           .ref("SmartFarm/User/${widget.userId}/History")
           .remove();
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Riwayat grafik berhasil dihapus")),
       );
@@ -423,7 +377,8 @@ class _HomePageState extends State<HomePage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => const NotificationPage(),
+                          builder: (context) =>
+                              NotificationPage(userId: widget.userId),
                         ),
                       );
                     },
@@ -545,9 +500,12 @@ class _HomePageState extends State<HomePage> {
                     const Center(child: SectionTitle(title: 'Suhu Udara')),
                     const SizedBox(height: 5),
 
+                    // ====== Cek apakah sensor ON atau OFF ======
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
-                          .ref("SmartFarm/Data_Terbaru")
+                          .ref(
+                            "SmartFarm/User/${widget.userId}/Sensor_Control/suhu_on",
+                          )
                           .onValue,
                       builder: (context, controlSnap) {
                         if (!controlSnap.hasData) {
@@ -557,11 +515,21 @@ class _HomePageState extends State<HomePage> {
                         final sensorOn =
                             controlSnap.data!.snapshot.value ?? true;
 
+                        // Jika sensor dimatikan → tampilkan pesan, sembunyikan data
                         if (sensorOn == false) {
-                          return const SizedBox();
+                          return const Center(
+                            child: Text(
+                              "Sensor Suhu Dimatikan",
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
                         }
 
-                        // ---- Sensor ON → Ambil Data Terbaru ----
+                        // ====== Sensor HIDUP → Ambil Data Terbaru ======
                         return StreamBuilder(
                           stream: FirebaseDatabase.instance
                               .ref("SmartFarm/Data_Terbaru")
@@ -630,75 +598,54 @@ class _HomePageState extends State<HomePage> {
                                     textAlign: TextAlign.center,
                                   ),
                                 ),
+
+                                const SizedBox(height: 20),
+
+                                // ====== GRAFIK SUHU (muncul hanya jika sensor ON) ======
+                                Column(
+                                  children: [
+                                    buildChart(
+                                      "Suhu (°C)",
+                                      suhuList,
+                                      Colors.red,
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                // ====== Parameter suhu ======
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: const [
+                                      WeatherCard(
+                                        label: '<20 °C',
+                                        description: 'Dingin',
+                                      ),
+                                      WeatherCard(
+                                        label: '20-40 °C',
+                                        description: 'Normal',
+                                      ),
+                                      WeatherCard(
+                                        label: '>35 °C',
+                                        description: 'Panas',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 30),
                               ],
                             );
                           },
                         );
                       },
                     ),
-                    const SizedBox(height: 10),
-
-                    // ================= Grafik Gabungan =================
-                    Column(
-                      children: [buildChart("Suhu (°C)", suhuList, Colors.red)],
-                    ),
-
-                    // Tombol Reset Grafik
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text("Hapus Grafik?"),
-                              content: const Text(
-                                "Data grafik akan dihapus dan dimulai dari kosong.",
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  child: const Text("Batal"),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(ctx);
-                                    clearSuhuHistory();
-                                  },
-                                  child: const Text(
-                                    "Hapus",
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.red,
-                        ),
-                        label: const Text(
-                          "Reset Grafik Saya",
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-
-                    // ================= Parameter Suhu =================
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: const [
-                          WeatherCard(label: '<20 °C', description: 'Dingin'),
-                          WeatherCard(label: '20-40 °C', description: 'Normal'),
-                          WeatherCard(label: '>35 °C', description: 'Panas'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
 
                     // ================= Kelembapan Tanah =================
                     Center(
@@ -712,17 +659,17 @@ class _HomePageState extends State<HomePage> {
                           // ====== StreamBuilder Kontrol Sensor ======
                           StreamBuilder(
                             stream: FirebaseDatabase.instance
-                                .ref("SmartFarm/Data_Terbaru")
+                                .ref(
+                                  "SmartFarm/User/${widget.userId}/Sensor_Control/tanah_on",
+                                )
                                 .onValue,
                             builder: (context, controlSnap) {
-                              if (!controlSnap.hasData) {
-                                return const SizedBox(); // loading kecil
-                              }
+                              if (!controlSnap.hasData) return const SizedBox();
 
                               final sensorOn =
                                   controlSnap.data!.snapshot.value ?? true;
 
-                              // Jika sensor OFF
+                              // Jika sensor OFF → matikan tampilan data + grafik
                               if (sensorOn == false) {
                                 return const Text(
                                   "Sensor Dimatikan",
@@ -734,7 +681,7 @@ class _HomePageState extends State<HomePage> {
                                 );
                               }
 
-                              // ====== Sensor ON → Ambil data ======
+                              // ====== Sensor ON → Ambil Data Terbaru ======
                               return StreamBuilder(
                                 stream: FirebaseDatabase.instance
                                     .ref("SmartFarm/Data_Terbaru")
@@ -772,19 +719,18 @@ class _HomePageState extends State<HomePage> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
-
                                     children: [
-                                      Center(
-                                        child: Text(
-                                          "$tanah %",
-                                          style: const TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green,
-                                          ),
-                                          textAlign: TextAlign.center,
+                                      // Persentase nilai
+                                      Text(
+                                        "$tanah %",
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
                                         ),
+                                        textAlign: TextAlign.center,
                                       ),
+
                                       const SizedBox(height: 10),
 
                                       // Status
@@ -796,66 +742,78 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                         textAlign: TextAlign.center,
                                       ),
+
+                                      const SizedBox(height: 20),
+
+                                      // ================= Grafik Kelembapan Tanah =================
+                                      Column(
+                                        children: [
+                                          buildChart(
+                                            "Kelembapan Tanah (%)",
+                                            tanahList,
+                                            Colors.blue,
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 20),
+
+                                      // ================= Parameter Kelembapan =================
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceAround,
+                                          children: const [
+                                            WeatherCard(
+                                              label: '<30% VWC',
+                                              description: 'Kering',
+                                            ),
+                                            WeatherCard(
+                                              label: '30–60% VWC',
+                                              description: 'Normal',
+                                            ),
+                                            WeatherCard(
+                                              label: '>60% VWC',
+                                              description: 'Basah',
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 30),
                                     ],
                                   );
                                 },
                               );
                             },
                           ),
-
-                          const SizedBox(height: 10),
                         ],
                       ),
                     ),
-
-                    // ================= buatkan grafik kelembapan tanah =================
-                    Column(
-                      children: [
-                        buildChart(
-                          "Kelembapan Tanah (%)",
-                          tanahList,
-                          Colors.blue,
-                        ),
-                      ],
-                    ),
-                    // ================= Parameter Kelembapan =================
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: const [
-                          WeatherCard(label: '<30% VWC', description: 'Kering'),
-                          WeatherCard(
-                            label: '30–60% VWC',
-                            description: 'Normal',
-                          ),
-                          WeatherCard(label: '>60% VWC', description: 'Basah'),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 30),
 
                     // ================= Intensitas Cahaya =================
                     const Center(
                       child: SectionTitle(title: 'Intensitas Cahaya'),
                     ),
+                    const SizedBox(height: 10),
 
-                    // === StreamBuilder Kontrol Sensor Cahaya ===
+                    // ===== StreamBuilder Kontrol Sensor Cahaya =====
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
-                          .ref("SmartFarm/Data_Terbaru")
+                          .ref(
+                            "SmartFarm/User/${widget.userId}/Sensor_Control/cahaya_on",
+                          )
                           .onValue,
                       builder: (context, controlSnap) {
-                        // Jika kontrol belum terbaca → tampilkan loading kecil
-                        if (!controlSnap.hasData) {
-                          return const SizedBox();
-                        }
+                        if (!controlSnap.hasData) return const SizedBox();
 
                         final sensorOn =
                             controlSnap.data!.snapshot.value ?? true;
 
-                        // Jika sensor OFF
+                        // Sensor OFF → matikan data + grafik
                         if (sensorOn == false) {
                           return const Center(
                             child: Text(
@@ -866,7 +824,7 @@ class _HomePageState extends State<HomePage> {
                           );
                         }
 
-                        // === Sensor ON → Ambil data dari Data_Terbaru ===
+                        // ===== Sensor ON → Ambil data intensitas cahaya =====
                         return StreamBuilder(
                           stream: FirebaseDatabase.instance
                               .ref("SmartFarm/Data_Terbaru")
@@ -904,7 +862,7 @@ class _HomePageState extends State<HomePage> {
                               children: [
                                 const SizedBox(height: 20),
 
-                                // Angka intensitas cahaya
+                                // Nilai angka Lux
                                 Center(
                                   child: Text(
                                     "${cahaya.toStringAsFixed(0)} Lux",
@@ -931,40 +889,52 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                 ),
 
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 20),
+
+                                // ===== Grafik Intensitas Cahaya =====
+                                Column(
+                                  children: [
+                                    buildCahayaChart(
+                                      "Intensitas Cahaya (lux)",
+                                      cahayaList,
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                // ===== Parameter Cahaya =====
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: const [
+                                      WeatherCard(
+                                        label: '<1000 Lux',
+                                        description: 'Redup',
+                                      ),
+                                      WeatherCard(
+                                        label: '1000–5000 Lux',
+                                        description: 'Normal',
+                                      ),
+                                      WeatherCard(
+                                        label: '>5000 Lux',
+                                        description: 'Terang',
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                const SizedBox(height: 32),
                               ],
                             );
                           },
                         );
                       },
                     ),
-
-                    const SizedBox(height: 5),
-                    //grafik
-                    Column(
-                      children: [
-                        buildCahayaChart("Intensitas Cahaya (lux)", cahayaList),
-                      ],
-                    ),
-                    // ================= Parameter Cahaya =================
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: const [
-                          WeatherCard(label: '<1000 Lux', description: 'Redup'),
-                          WeatherCard(
-                            label: '1000–5000 Lux',
-                            description: 'Normal',
-                          ),
-                          WeatherCard(
-                            label: '>5000 Lux',
-                            description: 'Terang',
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 32),
                   ],
                 ),
               ),

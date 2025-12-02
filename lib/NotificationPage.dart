@@ -1,106 +1,129 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:intl/intl.dart'; // ✅ Untuk format waktu
+import 'package:intl/intl.dart';
+import 'Homepage.dart';
 
 class NotificationPage extends StatefulWidget {
-  const NotificationPage({super.key});
+  final String userId; // <<<<<<<<<< TAMBAHKAN USER ID
+
+  const NotificationPage({super.key, required this.userId});
 
   @override
   State<NotificationPage> createState() => _NotificationPageState();
 }
 
 class _NotificationPageState extends State<NotificationPage> {
-  final DatabaseReference dataTerbaruRef =
-      FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru");
-  final DatabaseReference notifRef =
-      FirebaseDatabase.instance.ref("SmartFarm/Notifikasi");
-  final DatabaseReference riwayatSuhuRef =
-      FirebaseDatabase.instance.ref("SmartFarm/User/Riwayat_Suhu");
+  String? lastJudul;
+  String? lastPesan;
+  late final DatabaseReference dataTerbaruRef;
+  late final DatabaseReference notifikasiRef;
 
   double? suhu;
-  double? kelembaban;
-  String? waktuTerakhir; // 🕒 Simpan waktu dari Riwayat_Suhu
+  double? kelembapanUdara;
+  double? tanah;
+  double? cahaya;
 
   @override
   void initState() {
     super.initState();
 
-    // 🔁 Dengarkan perubahan suhu & kelembaban terbaru
+    // Path: SmartFarm/Data_Terbaru
+    dataTerbaruRef = FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru");
+
+    // Path notifikasi per user
+    notifikasiRef = FirebaseDatabase.instance.ref(
+      "SmartFarm/User/${widget.userId}/Notifikasi",
+    );
+
+    // Dengarkan perubahan dan buat notifikasi otomatis
     dataTerbaruRef.onValue.listen((event) {
       final data = event.snapshot.value as Map?;
-      if (data != null) {
-        setState(() {
-          suhu = (data["suhu"] as num?)?.toDouble();
-          kelembaban = (data["kelembaban_udara"] as num?)?.toDouble();
-        });
-        _ambilWaktuTerbaru(); // Ambil waktu dari Riwayat_Suhu
+      if (data == null) return;
+
+      suhu = (data["suhu"] as num?)?.toDouble();
+      tanah = (data["persentase_kelembapan_tanah"] as num?)?.toDouble();
+      cahaya = (data["intensitas_cahaya"] as num?)?.toDouble();
+
+      _cekDanSimpanNotifikasi(data);
+    });
+  }
+
+  // ================================================================
+  //        FUNGSI CEK & SIMPAN NOTIFIKASI
+  // ================================================================
+  Future<void> _cekDanSimpanNotifikasi(Map data) async {
+    String? judul;
+    String pesan = "";
+    String warna = "grey";
+
+    // ================ SUHU =================
+    if (suhu != null) {
+      if (suhu! < 20) {
+        judul = "Suhu Terlalu Rendah";
+        pesan = "Suhu berada di bawah normal (${suhu}°C)";
+        warna = "blue";
+      } else if (suhu! > 35) {
+        judul = "Suhu Terlalu Tinggi";
+        pesan = "Suhu melebihi batas aman (${suhu}°C)";
+        warna = "red";
       }
+    }
+
+    // ================ TANAH =================
+    if (tanah != null) {
+      if (tanah! < 30) {
+        judul ??= "Tanah Kering";
+        pesan += "\nKelembapan tanah rendah (${tanah}%)";
+        warna = "red";
+      } else if (tanah! > 60) {
+        judul ??= "Tanah Terlalu Basah";
+        pesan += "\nKelembapan tanah tinggi (${tanah}%)";
+        warna = "blue";
+      }
+    }
+
+    // ================ CAHAYA =================
+    if (cahaya != null) {
+      if (cahaya! < 1000) {
+        judul ??= "Intensitas Cahaya Rendah";
+        pesan += "\nCahaya redup (${cahaya} lux)";
+        warna = "blue";
+      } else if (cahaya! > 5000) {
+        judul ??= "Intensitas Cahaya Tinggi";
+        pesan += "\nCahaya terlalu terang (${cahaya} lux)";
+        warna = "red";
+      }
+    }
+
+    // Jika normal → tidak buat notif
+    if (judul == null) return;
+
+    // 🚫 ANTI SPAM: jika judul & pesan sama seperti sebelumnya → jangan simpan
+    if (lastJudul == judul && lastPesan == pesan.trim()) {
+      return;
+    }
+
+    // Simpan judul & pesan sebagai notifikasi terakhir
+    lastJudul = judul;
+    lastPesan = pesan.trim();
+
+    // Waktu teks
+    final waktu = DateFormat('dd MMM yyyy, HH:mm:ss').format(DateTime.now());
+
+    // Simpan ke Firebase
+    await notifikasiRef.push().set({
+      "judul": judul,
+      "pesan": pesan.trim(),
+      "warna": warna,
+      "ikon": "assets/image/suhu.png",
+      "waktu": waktu,
+      "timestamp": ServerValue.timestamp, // untuk sorting
     });
   }
 
-  Future<void> _ambilWaktuTerbaru() async {
-    // Ambil data terakhir dari /SmartFarm/User/Riwayat_Suhu
-    final snapshot = await riwayatSuhuRef.limitToLast(1).get();
-    if (snapshot.exists) {
-      final data = snapshot.value as Map;
-      final lastEntry = data.values.first as Map;
-      final waktu = lastEntry["waktu"] ?? DateTime.now().toIso8601String();
-
-      setState(() {
-        waktuTerakhir = waktu;
-      });
-
-      _updateNotification(waktu);
-    }
-  }
-
-  Future<void> _updateNotification(String waktu) async {
-    if (suhu == null || kelembaban == null) return;
-
-    String? title;
-    String message = "";
-    String? color;
-    String image = "assets/image/suhu.png";
-
-    // 🔥 Logika suhu
-    if (suhu! > 30) {
-      title = "Peringatan Suhu Tinggi";
-      message = "Suhu udara tinggi: ${suhu!.toStringAsFixed(1)}°C";
-      color = "red";
-    } else if (suhu! < 20) {
-      title = "Suhu Rendah";
-      message = "Suhu udara rendah: ${suhu!.toStringAsFixed(1)}°C";
-      color = "blue";
-    }
-
-    // 💧 Logika kelembaban
-    if (kelembaban! > 90) {
-      message += "\nKelembaban tinggi: ${kelembaban!.toStringAsFixed(1)}%";
-      title ??= "Peringatan Kelembaban";
-      color ??= "red";
-    } else if (kelembaban! < 40) {
-      message += "\nKelembaban rendah: ${kelembaban!.toStringAsFixed(1)}%";
-      title ??= "Kelembaban Rendah";
-      color ??= "blue";
-    }
-
-    // 🚫 Jika semuanya normal → jangan simpan notifikasi
-    if (title == null && message.isEmpty) return;
-
-    // 🕒 Format waktu agar lebih mudah dibaca
-    final formattedTime = DateFormat('dd MMM yyyy, HH:mm:ss')
-        .format(DateTime.tryParse(waktu) ?? DateTime.now());
-
-    // 💾 Simpan ke Firebase Realtime Database
-    await notifRef.push().set({
-      "title": title,
-      "message": message,
-      "color": color,
-      "image": image,
-      "timestamp": formattedTime, // ✅ waktu dari Riwayat_Suhu
-    });
-  }
-
+  // ================================================================
+  //        UI NOTIFIKASI
+  // ================================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,7 +141,7 @@ class _NotificationPageState extends State<NotificationPage> {
       ),
 
       body: StreamBuilder(
-        stream: notifRef.onValue,
+        stream: notifikasiRef.onValue,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -128,36 +151,40 @@ class _NotificationPageState extends State<NotificationPage> {
             return const Center(child: Text("Belum ada notifikasi."));
           }
 
-          final data = (snapshot.data!.snapshot.value as Map).values
-              .toList()
-              .reversed
-              .toList();
+          final raw = (snapshot.data!.snapshot.value as Map);
+
+          final semuaData =
+              raw.values.map((e) => Map<String, dynamic>.from(e)).toList()
+                ..sort(
+                  (a, b) =>
+                      (b["timestamp"] ?? 0).compareTo(a["timestamp"] ?? 0),
+                );
 
           return ListView.builder(
-            reverse: true,
-            itemCount: data.length,
+            itemCount: semuaData.length,
             itemBuilder: (context, index) {
-              final notif = Map<String, dynamic>.from(data[index]);
+              final notif = semuaData[index];
+
               return Card(
                 margin: const EdgeInsets.all(10),
-                color: _getColor(notif["color"]),
+                color: _warnaCard(notif["warna"]),
                 child: ListTile(
                   leading: Image.asset(
-                    notif["image"] ?? "assets/image/logo.png",
+                    notif["ikon"] ?? "assets/image/logo.png",
                     width: 40,
                     height: 40,
                   ),
                   title: Text(
-                    notif["title"] ?? "",
+                    notif["judul"] ?? "",
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(notif["message"] ?? ""),
+                      Text(notif["pesan"] ?? ""),
                       const SizedBox(height: 5),
                       Text(
-                        "🕒 ${notif["timestamp"] ?? ''}",
+                        "🕒 ${notif["waktu"] ?? ""}",
                         style: const TextStyle(
                           fontSize: 12,
                           color: Colors.black54,
@@ -174,16 +201,17 @@ class _NotificationPageState extends State<NotificationPage> {
     );
   }
 
-  Color _getColor(String? color) {
-    switch (color) {
+  // =================== WARNA CARD ===================
+  Color _warnaCard(String? warna) {
+    switch (warna) {
       case "red":
-        return const Color.fromARGB(255, 255, 120, 120);
+        return const Color(0xFFFFA5A5); // merah lembut
       case "blue":
-        return const Color.fromARGB(255, 120, 180, 255);
+        return const Color(0xFFA5C8FF); // biru soft
       case "green":
-        return const Color.fromARGB(255, 120, 255, 160);
+        return const Color(0xFFA5FFBE); // hijau soft
       default:
-        return const Color.fromARGB(255, 64, 64, 64);
+        return const Color(0xFF3A3A3A); // abu gelap
     }
   }
 }

@@ -16,7 +16,9 @@ class _DaftarPageState extends State<DaftarPage> {
   final TextEditingController lokasiC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
 
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("SmartFarm/User");
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref(
+    "SmartFarm/User",
+  );
   bool _isSaving = false;
 
   // Hash password
@@ -56,35 +58,11 @@ class _DaftarPageState extends State<DaftarPage> {
 
       await newUserRef.set(newData);
 
-      // ================================================
-      // 🔥 Buat data struktur PER USER (Aman multiuser)
-      // ================================================
-
-      // 👉 1. Folder sensor aktif user ini saja
-      await newUserRef.child("DeviceSensor").set({
-        "suhu": 0,
-        "kelembapan": 0,
-        "cahaya": 0,
-      });
-
-      // 👉 2. Folder History untuk masing-masing user
-      await newUserRef.child("History").set({
-        "suhu": {},
-        "kelembapan": {},
-        "cahaya": {},
-      });
-
-      // 👉 3. Folder SavedData (Jika mau disimpan manual)
-      await newUserRef.child("SavedData").set({
-        "catatan": "Belum ada data tersimpan",
-        "tanggal_reset": "",
-      });
-
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Akun berhasil dibuat!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Akun berhasil dibuat!")));
 
       // Pindah
       Navigator.pushReplacement(
@@ -98,8 +76,9 @@ class _DaftarPageState extends State<DaftarPage> {
         ),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Gagal menyimpan data: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Gagal menyimpan data: $e")));
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -165,8 +144,10 @@ class _DaftarPageState extends State<DaftarPage> {
                 onPressed: _isSaving ? null : _simpanData,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 60, vertical: 15),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 60,
+                    vertical: 15,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(30),
                   ),
@@ -204,9 +185,10 @@ class _DaftarPageState extends State<DaftarPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style:
-                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 4),
           TextField(
             controller: controller,
@@ -216,8 +198,10 @@ class _DaftarPageState extends State<DaftarPage> {
               hintText: hint,
               filled: true,
               fillColor: Colors.grey.shade200,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
