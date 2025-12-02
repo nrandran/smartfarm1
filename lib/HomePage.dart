@@ -672,10 +672,11 @@ class _HomePageState extends State<HomePage> {
                               // Jika sensor OFF → matikan tampilan data + grafik
                               if (sensorOn == false) {
                                 return const Text(
-                                  "Sensor Dimatikan",
+                                  "Sensor tanah Dimatikan",
                                   style: TextStyle(
                                     color: Colors.red,
                                     fontSize: 18,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                   textAlign: TextAlign.center,
                                 );
@@ -817,8 +818,12 @@ class _HomePageState extends State<HomePage> {
                         if (sensorOn == false) {
                           return const Center(
                             child: Text(
-                              "Sensor Dimatikan",
-                              style: TextStyle(color: Colors.red, fontSize: 18),
+                              "Sensor Cahaya Dimatikan",
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           );
