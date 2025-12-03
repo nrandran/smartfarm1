@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:video_player/video_player.dart';
+
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'DeviceControlPage.dart';
 import 'NotificationPage.dart';
 import 'ProfilPage.dart';
@@ -30,12 +30,20 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
-
   String userName = "";
   String userLocation = "";
-
+  StreamSubscription? _historyListener;
   Timer? historyTimer;
 
+  // Variabel Data Realtime
+  double currentSuhu = 0;
+  double currentCahaya = 0;
+  double currentTanah = 0;
+  String currentStatusSuhu = "Menunggu...";
+  String currentStatusTanah = "Menunggu...";
+  String currentWaktu = "";
+
+  // List untuk Grafik (History)
   List<double> suhuList = [];
   List<double> cahayaList = [];
   List<double> tanahList = [];
@@ -44,109 +52,233 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    _loadUserData();
+    _loadHistory();
 
-    loadUserData();
-    loadHistory();
-
-    // ================== TIMER SIMPAN RIWAYAT SETIAP 60 DETIK ==================
-    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
-      saveUserSensorHistory();
-      await loadHistory();
-    });
-
-    // ================== INISIALISASI VIDEO ==================
+    // 1. Inisialisasi Video Background
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
         if (mounted) {
           setState(() {});
-          _controller
-            ..setLooping(true)
-            ..setVolume(0.0)
-            ..play();
+          _controller.setLooping(true);
+          _controller.setVolume(0.0);
+          _controller.play();
         }
       });
 
-    // ================== LISTEN DATA SENSOR TERBARU ==================
-    listenDataTerbaru();
-  }
+    // 2. LOAD HISTORY PERTAMA KALI (Agar grafik langsung muncul)
 
-  // ================== BAGIAN: LOAD USER DATA ==================
-  Future<void> loadUserData() async {
-    final prefs = await SharedPreferences.getInstance();
+    // LISTENER REALTIME UNTUK HISTORY
+    void _startHistoryListener() {
+      final dbRef = FirebaseDatabase.instance.ref(
+        "SmartFarm/User/${widget.userId}/History",
+      );
 
-    setState(() {
-      userName = prefs.getString("userName") ?? widget.userName ?? "";
-      userLocation =
-          prefs.getString("userLocation") ?? widget.userLocation ?? "";
-    });
-  }
+      _historyListener = dbRef.onValue.listen((event) {
+        if (!event.snapshot.exists) return;
 
-  // ================== BAGIAN: LISTEN DATA SENSOR REALTIME ==================
-  void listenDataTerbaru() {
-    FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
-      event,
-    ) {
-      if (event.snapshot.value == null) return;
+        final List<double> tmpSuhu = [];
+        final List<double> tmpCahaya = [];
+        final List<double> tmpTanah = [];
+        final List<String> tmpTimes = [];
 
-      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+        for (var child in event.snapshot.children) {
+          final val = Map<String, dynamic>.from(child.value as Map);
 
-      final suhu = double.tryParse(data['suhu'].toString()) ?? 0;
-      final cahaya = double.tryParse(data['intensitas_cahaya'].toString()) ?? 0;
-      final tanah =
-          double.tryParse(data['persentase_kelembapan_tanah'].toString()) ?? 0;
-      final waktu = data['waktu']?.toString() ?? "";
+          tmpSuhu.add(double.tryParse(val['suhu'].toString()) ?? 0);
+          tmpCahaya.add(double.tryParse(val['cahaya'].toString()) ?? 0);
+          tmpTanah.add(double.tryParse(val['tanah'].toString()) ?? 0);
+          tmpTimes.add(val['waktu'].toString());
+        }
 
-      setState(() {
-        suhuList.add(suhu);
-        cahayaList.add(cahaya);
-        tanahList.add(tanah);
-        times.add(waktu);
-
-        // Batasi maksimal 20 data
-        if (suhuList.length > 20) {
-          suhuList.removeAt(0);
-          cahayaList.removeAt(0);
-          tanahList.removeAt(0);
-          times.removeAt(0);
+        if (mounted) {
+          setState(() {
+            suhuList = tmpSuhu;
+            cahayaList = tmpCahaya;
+            tanahList = tmpTanah;
+            times = tmpTimes;
+          });
         }
       });
+    }
+
+    _startHistoryListener();
+    // 3. LISTEN DATA REALTIME (Update angka besar & grafik live)
+    _listenDataTerbaru();
+
+    // 4. AUTO SAVE TIMER (Simpan ke history setiap 60 detik)
+    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _saveCurrentDataToHistory();
     });
   }
 
-  // ================== BAGIAN: LOAD DATA RIWAYAT ==================
-  Future<void> loadHistory() async {
-    final ref = FirebaseDatabase.instance.ref(
+  void _startHistoryListener() {
+    final dbRef = FirebaseDatabase.instance.ref(
       "SmartFarm/User/${widget.userId}/History",
     );
 
-    final snapshot = await ref.limitToLast(20).get();
-    if (!snapshot.exists) return;
+    _historyListener = dbRef.onValue.listen((event) {
+      if (!event.snapshot.exists) return;
 
-    final data = Map<String, dynamic>.from(snapshot.value as Map);
+      final List<double> tmpSuhu = [];
+      final List<double> tmpCahaya = [];
+      final List<double> tmpTanah = [];
+      final List<String> tmpTimes = [];
 
-    suhuList.clear();
-    cahayaList.clear();
-    tanahList.clear();
-    times.clear();
+      for (var child in event.snapshot.children) {
+        final val = Map<String, dynamic>.from(child.value as Map);
 
-    data.forEach((key, value) {
-      final item = Map<String, dynamic>.from(value);
+        tmpSuhu.add(double.tryParse(val['suhu'].toString()) ?? 0);
+        tmpCahaya.add(double.tryParse(val['cahaya'].toString()) ?? 0);
+        tmpTanah.add(double.tryParse(val['tanah'].toString()) ?? 0);
+        tmpTimes.add(val['waktu'].toString());
+      }
 
-      suhuList.add(double.tryParse(item['suhu'].toString()) ?? 0);
-      cahayaList.add(double.tryParse(item['cahaya'].toString()) ?? 0);
-      tanahList.add(double.tryParse(item['tanah'].toString()) ?? 0);
-      times.add(item['waktu']?.toString() ?? "");
+      if (mounted) {
+        setState(() {
+          suhuList = tmpSuhu;
+          cahayaList = tmpCahaya;
+          tanahList = tmpTanah;
+          times = tmpTimes;
+        });
+      }
     });
-
-    setState(() {});
   }
 
-  // ================== BAGIAN: SIMPAN RIWAYAT SENSOR ==================
-  void saveUserSensorHistory() {
-    DataLoggerService.saveUserSensor(widget.userId, null);
+  Future<void> _loadUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        userName =
+            prefs.getString("userName") ?? widget.userName ?? "Petani Cerdas";
+        userLocation =
+            prefs.getString("userLocation") ??
+            widget.userLocation ??
+            "Lokasi Belum Diatur";
+      });
+    }
   }
 
-  // ================== BAGIAN: BAGIAN PEMBUAT GRAFIK ==================
+  // --- FUNGSI 1: LOAD HISTORY (DARI SmartFarm/User/...) ---
+  Future<void> _loadHistory() async {
+    try {
+      // PERBAIKAN PATH DI SINI
+      final ref = FirebaseDatabase.instance
+          .ref("SmartFarm/User/${widget.userId}/History")
+          .orderByChild('waktu')
+          .limitToLast(20); // Ambil 20 data terakhir
+
+      final snapshot = await ref.get();
+
+      if (snapshot.exists) {
+        final List<double> tmpSuhu = [];
+        final List<double> tmpCahaya = [];
+        final List<double> tmpTanah = [];
+        final List<String> tmpTimes = [];
+
+        for (var child in snapshot.children) {
+          final val = Map<String, dynamic>.from(child.value as Map);
+
+          tmpSuhu.add(double.tryParse(val['suhu'].toString()) ?? 0);
+          tmpCahaya.add(double.tryParse(val['cahaya'].toString()) ?? 0);
+          tmpTanah.add(double.tryParse(val['tanah'].toString()) ?? 0);
+          tmpTimes.add(val['waktu'].toString());
+        }
+
+        if (mounted) {
+          setState(() {
+            suhuList = tmpSuhu;
+            cahayaList = tmpCahaya;
+            tanahList = tmpTanah;
+            times = tmpTimes;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal load history: $e");
+    }
+  }
+
+  // --- FUNGSI 2: LISTEN REALTIME (DARI SmartFarm/Data_Terbaru) ---
+  void _listenDataTerbaru() {
+    FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
+      event,
+    ) {
+      if (event.snapshot.value != null && mounted) {
+        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+
+        setState(() {
+          // Ambil Data
+          currentSuhu = double.tryParse(data['suhu']?.toString() ?? '0') ?? 0;
+          currentCahaya =
+              double.tryParse(data['intensitas_cahaya']?.toString() ?? '0') ??
+              0;
+          currentTanah =
+              double.tryParse(
+                data['persentase_kelembapan_tanah']?.toString() ?? '0',
+              ) ??
+              0.0;
+
+          currentStatusSuhu = data['suhu_status'] ?? "-";
+          currentStatusTanah = data['kelembapan_tanah_status'] ?? "-";
+          currentWaktu = data['waktu'] ?? DateTime.now().toString();
+
+          // Update Grafik Realtime (tambah data baru ke ujung kanan)
+          suhuList.add(currentSuhu);
+          cahayaList.add(currentCahaya);
+          tanahList.add(currentTanah);
+          times.add(currentWaktu);
+
+          // Batasi tampilan grafik maks 20 titik agar tidak menumpuk
+          if (suhuList.length > 20) {
+            suhuList.removeAt(0);
+            cahayaList.removeAt(0);
+            tanahList.removeAt(0);
+            times.removeAt(0);
+          }
+        });
+      }
+    });
+  }
+
+  // --- FUNGSI 3: SIMPAN KE HISTORY (KE SmartFarm/User/...) ---
+  Future<void> _saveCurrentDataToHistory() async {
+    if (currentWaktu.isEmpty) return;
+
+    try {
+      // PERBAIKAN PATH DI SINI JUGA
+      final historyRef = FirebaseDatabase.instance.ref(
+        "SmartFarm/User/${widget.userId}/History",
+      );
+
+      // Push data baru dengan unique ID otomatis
+      await historyRef.push().set({
+        "suhu": currentSuhu,
+        "cahaya": currentCahaya,
+        "tanah": currentTanah,
+        "waktu": currentWaktu,
+      });
+      // print("Data history tersimpan");
+    } catch (e) {
+      debugPrint("Error save history: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    // Matikan timer penyimpan history
+    historyTimer?.cancel();
+
+    // Stop video
+    _controller.dispose();
+
+    // Hentikan listener Firebase
+    _historyListener?.cancel();
+
+    super.dispose();
+  }
+
+  // Widget untuk grafik
   Widget buildChart(String title, List<double> dataList, Color lineColor) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -179,8 +311,24 @@ class _HomePageState extends State<HomePage> {
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (value, meta) =>
-                          buildTimeTitle(value.toInt()),
+                      getTitlesWidget: (value, meta) {
+                        // clamp index ke rentang valid
+                        int index = value.round();
+                        if (dataList.isEmpty) return const SizedBox();
+                        if (index < 0) index = 0;
+                        if (index >= times.length) index = times.length - 1;
+                        if (index < 0 || index >= times.length)
+                          return const SizedBox();
+
+                        final txt = times[index];
+                        if (txt.length < 16) return const SizedBox();
+
+                        return Text(
+                          txt.substring(11, 16),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                      interval: 1,
                     ),
                   ),
                   leftTitles: AxisTitles(
@@ -210,7 +358,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ================== BAGIAN: GRAFIK INTENSITAS CAHAYA (0–10000) ==================
   Widget buildCahayaChart(String title, List<double> dataList) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -240,7 +387,6 @@ class _HomePageState extends State<HomePage> {
               LineChartData(
                 minY: 0,
                 maxY: 10000,
-
                 extraLinesData: ExtraLinesData(
                   horizontalLines: [
                     HorizontalLine(
@@ -260,15 +406,28 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-
                 gridData: FlGridData(show: true),
-
                 titlesData: FlTitlesData(
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      getTitlesWidget: (value, meta) =>
-                          buildTimeTitle(value.toInt()),
+                      getTitlesWidget: (value, meta) {
+                        if (dataList.isEmpty) return const SizedBox();
+                        int index = value.round();
+                        if (index < 0) index = 0;
+                        if (index >= times.length) index = times.length - 1;
+                        if (index < 0 || index >= times.length)
+                          return const SizedBox();
+
+                        final txt = times[index];
+                        if (txt.length < 16) return const SizedBox();
+
+                        return Text(
+                          txt.substring(11, 16),
+                          style: const TextStyle(fontSize: 10),
+                        );
+                      },
+                      interval: 1,
                     ),
                   ),
                   leftTitles: AxisTitles(
@@ -287,9 +446,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 ),
-
                 borderData: FlBorderData(show: false),
-
                 lineBarsData: [
                   LineChartBarData(
                     spots: List.generate(
@@ -308,40 +465,6 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-  }
-
-  // ================== BAGIAN: FORMAT TEKS WAKTU ==================
-  Widget buildTimeTitle(int index) {
-    if (index < 0 || index >= times.length) return const SizedBox();
-    if (times[index].length < 16) return const SizedBox();
-    return Text(
-      times[index].substring(11, 16),
-      style: const TextStyle(fontSize: 10),
-    );
-  }
-
-  // ================== BAGIAN: HAPUS RIWAYAT ==================
-  Future<void> clearSuhuHistory() async {
-    try {
-      await FirebaseDatabase.instance
-          .ref("SmartFarm/User/${widget.userId}/History")
-          .remove();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Riwayat grafik berhasil dihapus")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text("Gagal menghapus: $e")));
-    }
-  }
-
-  @override
-  void dispose() {
-    historyTimer?.cancel();
-    _controller.dispose();
-    super.dispose();
   }
 
   @override
