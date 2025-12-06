@@ -106,8 +106,8 @@ class _HomePageState extends State<HomePage> {
     // 3. LISTEN DATA REALTIME (Update angka besar & grafik live)
     _listenDataTerbaru();
 
-    // 4. AUTO SAVE TIMER (Simpan ke history setiap 100 detik)
-    historyTimer = Timer.periodic(const Duration(seconds: 100), (_) {
+    // 4. AUTO SAVE TIMER (Simpan ke history setiap 300 detik)
+    historyTimer = Timer.periodic(const Duration(seconds: 300), (_) {
       _saveCurrentDataToHistory();
     });
   }
