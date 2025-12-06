@@ -20,8 +20,8 @@ class AITipsCard extends StatelessWidget {
   }
 
   String _statusCahaya(double lux) {
-    if (lux < 1000) return 'Redup';
-    if (lux > 5000) return 'Terang';
+    if (lux < 5000) return 'Redup';
+    if (lux > 50000) return 'Terang';
     return 'Normal';
   }
 

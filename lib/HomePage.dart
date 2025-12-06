@@ -106,8 +106,8 @@ class _HomePageState extends State<HomePage> {
     // 3. LISTEN DATA REALTIME (Update angka besar & grafik live)
     _listenDataTerbaru();
 
-    // 4. AUTO SAVE TIMER (Simpan ke history setiap 60 detik)
-    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    // 4. AUTO SAVE TIMER (Simpan ke history setiap 100 detik)
+    historyTimer = Timer.periodic(const Duration(seconds: 100), (_) {
       _saveCurrentDataToHistory();
     });
   }
@@ -278,6 +278,38 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  Future<void> _clearAllCharts() async {
+    // 1. Hapus data History di Firebase
+    final ref = FirebaseDatabase.instance.ref(
+      "SmartFarm/User/${widget.userId}/History",
+    );
+
+    await ref.remove();
+
+    // 2. Hentikan listener history
+    await _historyListener?.cancel();
+    _historyListener = null;
+
+    // 3. Hentikan autosave timer (agar tidak menambah data lagi)
+    historyTimer?.cancel();
+    historyTimer = null;
+
+    // 4. Kosongkan grafik di UI
+    if (mounted) {
+      setState(() {
+        suhuList.clear();
+        cahayaList.clear();
+        tanahList.clear();
+        times.clear();
+      });
+    }
+
+    // 5. (opsional) Tampilkan snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Grafik & History berhasil dihapus")),
+    );
+  }
+
   // Widget untuk grafik
   Widget buildChart(String title, List<double> dataList, Color lineColor) {
     return Container(
@@ -386,7 +418,7 @@ class _HomePageState extends State<HomePage> {
             child: LineChart(
               LineChartData(
                 minY: 0,
-                maxY: 10000,
+                maxY: 60000,
                 extraLinesData: ExtraLinesData(
                   horizontalLines: [
                     HorizontalLine(
@@ -456,7 +488,19 @@ class _HomePageState extends State<HomePage> {
                     isCurved: true,
                     color: Colors.orange,
                     barWidth: 3,
-                    dotData: FlDotData(show: false),
+                    // Tampilkan titik pada setiap data point (sama seperti buildChart)
+                    dotData: FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, barData, index) {
+                        return FlDotCirclePainter(
+                          radius: 3.5, // ukuran titik
+                          color: Colors.white, // warna isi titik
+                          strokeWidth: 2,
+                          strokeColor: Colors
+                              .orange, // outline agar terlihat di background
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -492,23 +536,67 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const Spacer(),
 
-                  // 🔔 Tombol Notifikasi
-                  IconButton(
-                    tooltip: 'Lihat Notifikasi',
-                    iconSize: 28,
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              NotificationPage(userId: widget.userId),
-                        ),
+                  // 🔔 Tombol Notifikasi dengan Badge
+                  StreamBuilder(
+                    stream: FirebaseDatabase.instance
+                        .ref("SmartFarm/User/${widget.userId}/Notifikasi")
+                        .onValue,
+                    builder: (context, snapshot) {
+                      int jumlahNotif = 0;
+
+                      if (snapshot.hasData &&
+                          snapshot.data!.snapshot.value != null) {
+                        final data = snapshot.data!.snapshot.value as Map;
+                        jumlahNotif = data.length;
+                      }
+
+                      return Stack(
+                        children: [
+                          IconButton(
+                            tooltip: 'Lihat Notifikasi',
+                            iconSize: 28,
+                            icon: Image.asset(
+                              'assets/image/notif.png',
+                              width: 35,
+                              height: 35,
+                            ),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      NotificationPage(userId: widget.userId),
+                                ),
+                              );
+                            },
+                          ),
+
+                          // 🔴 Badge merah kecil
+                          if (jumlahNotif > 0)
+                            Positioned(
+                              right: 4,
+                              top: 4,
+                              child: Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  jumlahNotif > 9
+                                      ? "9+"
+                                      : jumlahNotif.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       );
                     },
-                    icon: const CircleAvatar(
-                      backgroundImage: AssetImage('assets/image/notif.png'),
-                      backgroundColor: Colors.white,
-                    ),
                   ),
 
                   const SizedBox(width: 1),
@@ -1041,15 +1129,15 @@ class _HomePageState extends State<HomePage> {
                                         MainAxisAlignment.spaceAround,
                                     children: const [
                                       WeatherCard(
-                                        label: '<1000 Lux',
+                                        label: '<5000 Lux',
                                         description: 'Redup',
                                       ),
                                       WeatherCard(
-                                        label: '1000–5000 Lux',
+                                        label: '10000–50000 Lux',
                                         description: 'Normal',
                                       ),
                                       WeatherCard(
-                                        label: '>5000 Lux',
+                                        label: '>50000 Lux',
                                         description: 'Terang',
                                       ),
                                     ],
@@ -1057,6 +1145,21 @@ class _HomePageState extends State<HomePage> {
                                 ),
 
                                 const SizedBox(height: 32),
+
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color.fromARGB(
+                                      255,
+                                      255,
+                                      255,
+                                      255,
+                                    ),
+                                  ),
+                                  onPressed: _clearAllCharts,
+                                  child: const Text(
+                                    "Hapus Grafik & Data History",
+                                  ),
+                                ),
                               ],
                             );
                           },
@@ -1098,6 +1201,7 @@ class WeatherCard extends StatelessWidget {
             Text(
               label,
               style: const TextStyle(
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: Colors.green,
               ),

@@ -23,6 +23,9 @@ class _NotificationPageState extends State<NotificationPage> {
   double? tanah;
   double? cahaya;
 
+  int cooldownMs = 60000; // 1 menit
+  int? lastSentTime;
+
   @override
   void initState() {
     super.initState();
@@ -56,7 +59,7 @@ class _NotificationPageState extends State<NotificationPage> {
     String pesan = "";
     String warna = "grey";
 
-    // ================ SUHU =================
+    // ====================== CEK SUHU ======================
     if (suhu != null) {
       if (suhu! < 20) {
         judul = "Suhu Terlalu Rendah";
@@ -69,7 +72,7 @@ class _NotificationPageState extends State<NotificationPage> {
       }
     }
 
-    // ================ TANAH =================
+    // ==================== CEK KELEMBAPAN TANAH ====================
     if (tanah != null) {
       if (tanah! < 30) {
         judul ??= "Tanah Kering";
@@ -82,43 +85,53 @@ class _NotificationPageState extends State<NotificationPage> {
       }
     }
 
-    // ================ CAHAYA =================
+    // ==================== CEK CAHAYA ====================
     if (cahaya != null) {
-      if (cahaya! < 1000) {
+      if (cahaya! < 5000) {
         judul ??= "Intensitas Cahaya Rendah";
         pesan += "\nCahaya redup (${cahaya} lux)";
         warna = "blue";
-      } else if (cahaya! > 5000) {
+      } else if (cahaya! > 50000) {
         judul ??= "Intensitas Cahaya Tinggi";
         pesan += "\nCahaya terlalu terang (${cahaya} lux)";
         warna = "red";
       }
     }
 
-    // Jika normal → tidak buat notif
+    // Jika normal → jangan buat notif
     if (judul == null) return;
 
-    // 🚫 ANTI SPAM: jika judul & pesan sama seperti sebelumnya → jangan simpan
-    if (lastJudul == judul && lastPesan == pesan.trim()) {
-      return;
+    // ==================== 1. ANTI SPAM (JUDUL/PESAN SAMA) ====================
+    if (lastJudul == judul && lastPesan == pesan.trim()) return;
+
+    // ==================== 2. COOL-DOWN ====================
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (lastSentTime != null && now - lastSentTime! < cooldownMs) {
+      return; // belum 1 menit → jangan spam
     }
 
-    // Simpan judul & pesan sebagai notifikasi terakhir
+    lastSentTime = now; // set waktu
+
+    // Simpan sebagai notifikasi terakhir
     lastJudul = judul;
     lastPesan = pesan.trim();
 
     // Waktu teks
     final waktu = DateFormat('dd MMM yyyy, HH:mm:ss').format(DateTime.now());
 
-    // Simpan ke Firebase
+    // ==================== 3. SIMPAN KE FIREBASE ====================
     await notifikasiRef.push().set({
       "judul": judul,
       "pesan": pesan.trim(),
       "warna": warna,
       "ikon": "assets/image/suhu.png",
       "waktu": waktu,
-      "timestamp": ServerValue.timestamp, // untuk sorting
+      "timestamp": ServerValue.timestamp,
     });
+  }
+
+  Future<void> _hapusNotifikasi(String key) async {
+    await notifikasiRef.child(key).remove();
   }
 
   // ================================================================
@@ -154,11 +167,13 @@ class _NotificationPageState extends State<NotificationPage> {
           final raw = (snapshot.data!.snapshot.value as Map);
 
           final semuaData =
-              raw.values.map((e) => Map<String, dynamic>.from(e)).toList()
-                ..sort(
-                  (a, b) =>
-                      (b["timestamp"] ?? 0).compareTo(a["timestamp"] ?? 0),
-                );
+              raw.entries.map((entry) {
+                final key = entry.key;
+                final value = Map<String, dynamic>.from(entry.value);
+                return {"key": key, ...value};
+              }).toList()..sort(
+                (a, b) => (b["timestamp"] ?? 0).compareTo(a["timestamp"] ?? 0),
+              );
 
           return ListView.builder(
             itemCount: semuaData.length,
@@ -191,6 +206,16 @@ class _NotificationPageState extends State<NotificationPage> {
                         ),
                       ),
                     ],
+                  ),
+                  trailing: IconButton(
+                    icon: Image.asset(
+                      'assets/image/hapus.png', // pastikan path benar
+                      width: 25,
+                      height: 25,
+                    ),
+                    onPressed: () {
+                      _hapusNotifikasi(notif["key"]);
+                    },
                   ),
                 ),
               );
