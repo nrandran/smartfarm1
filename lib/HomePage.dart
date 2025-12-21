@@ -30,6 +30,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
+  late DatabaseReference forecastRef; //daffa update
   String userName = "";
   String userLocation = "";
   StreamSubscription? _historyListener;
@@ -52,6 +53,9 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    forecastRef = FirebaseDatabase.instance.ref(
+      "SmartFarm/User/${widget.userId}/Forecast",
+    );
     _loadUserData();
     _loadHistory();
 
@@ -511,6 +515,129 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget buildForecastCard() {
+    return StreamBuilder(
+      stream: forecastRef.onValue,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Text(
+              " Prediksi belum tersedia\nMenunggu data mencukupi...",
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        final data = Map<String, dynamic>.from(
+          snapshot.data!.snapshot.value as Map,
+        );
+
+        final harian = Map<String, dynamic>.from(data['harian']);
+        final day1 = Map<String, dynamic>.from(harian['day_1']);
+        final day2 = Map<String, dynamic>.from(harian['day_2']);
+        final day3 = Map<String, dynamic>.from(harian['day_3']);
+        final day4 = Map<String, dynamic>.from(harian['day_4']);
+        final day5 = Map<String, dynamic>.from(harian['day_5']);
+
+        Widget forecastRow(String label, Map day) {
+          return Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    Image.asset('assets/image/suhu.png', width: 18, height: 18),
+                    Text(
+                      " ${day['suhu']}°C",
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(width: 12),
+                    Image.asset(
+                      'assets/image/tanah.png',
+                      width: 18,
+                      height: 18,
+                    ),
+                    Text(
+                      " ${day['tanah']}%",
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.green.shade600, Colors.green.shade400],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.green.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "🌱 Ramalan Cuaca & Tanah dalam 5 hari",
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 14),
+
+              forecastRow("Hari ini", day1),
+              forecastRow("Hari ke 2", day2),
+              forecastRow("Hari ke 3", day3),
+              forecastRow("Hari ke 4", day4),
+              forecastRow("Hari ke 5", day5),
+
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  "📅 ${day1['tanggal']}",
+                  style: const TextStyle(fontSize: 13, color: Colors.white70),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -706,6 +833,11 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(height: 10),
                     const AITipsCard(),
                     const SizedBox(height: 10),
+
+                    // ================= Forcesting =================
+                    const SectionTitle(title: 'Prediksi'), //daffa update
+                    buildForecastCard(), // daffa update
+                    const SizedBox(height: 5),
 
                     // ================= Suhu =================
                     const Center(child: SectionTitle(title: 'Suhu Udara')),

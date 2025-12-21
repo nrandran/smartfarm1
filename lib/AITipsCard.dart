@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 
-// =======================================
-// Widget: AI Tips otomatis berdasarkan 3 sensor
-// =======================================
 class AITipsCard extends StatelessWidget {
   const AITipsCard({super.key});
 
@@ -25,7 +22,6 @@ class AITipsCard extends StatelessWidget {
     return 'Normal';
   }
 
-  /// Menghasilkan kesimpulan berdasarkan 3 sensor.
   Map<String, String> _generateTip({
     required double suhu,
     required double kelembapanTanah,
@@ -36,61 +32,67 @@ class AITipsCard extends StatelessWidget {
     final sCahaya = _statusCahaya(cahaya);
 
     final needsAuto =
-        (sTanah == 'Kering') ||
-        (sSuhu == 'Panas') ||
-        (sCahaya == 'Redup') ||
-        (sCahaya == 'Terang');
+        sTanah == 'Kering' ||
+        sSuhu == 'Panas' ||
+        sCahaya == 'Redup' ||
+        sCahaya == 'Terang';
 
-    // =============================
-    // KESIMPULAN
-    // =============================
     String conclusion;
     if (needsAuto) {
       final reasons = <String>[];
       if (sTanah == 'Kering') reasons.add('tanah kering → perlu penyiraman');
       if (sSuhu == 'Panas') reasons.add('suhu tinggi → risiko stres tanaman');
-      if (sCahaya == 'Redup')
-        reasons.add('cahaya kurang → tingkatkan pencahayaan');
-      if (sCahaya == 'Terang')
-        reasons.add('cahaya terlalu kuat → gunakan naungan');
+      if (sCahaya == 'Redup') reasons.add('cahaya kurang');
+      if (sCahaya == 'Terang') reasons.add('cahaya terlalu kuat');
 
-      conclusion = 'Kesimpulan: ${reasons.join(', ')}.';
+      conclusion = reasons.join(', ');
     } else {
-      conclusion = 'Kesimpulan: Semua kondisi normal dan stabil.';
+      conclusion = 'Semua kondisi normal dan stabil.';
     }
 
-    // =============================
-    // Bagian angka + status sensor
-    // =============================
-    final sensorInfo = [
-      'Suhu: ${suhu.toStringAsFixed(1)} °C ($sSuhu)',
-      'Kelembapan Tanah: ${kelembapanTanah.toStringAsFixed(0)}% ($sTanah)',
-      'Cahaya: ${cahaya.toStringAsFixed(0)} Lux ($sCahaya)',
-    ].join('\n');
+    return {'tip': conclusion, 'decision': needsAuto ? 'AI' : 'Manual'};
+  }
 
-    return {
-      'sensor': sensorInfo,
-      'tip': conclusion,
-      'decision': needsAuto ? 'AI' : 'Manual',
-    };
+  // 🔧 FIX: terima Widget (image/icon)
+  Widget _sensorRow(Widget iconWidget, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          iconWidget,
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: Colors.white70)),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: StreamBuilder(
         stream: FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue,
         builder: (context, snapshot) {
           if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
-            return const Card(
-              color: Colors.orange,
-              child: Padding(
-                padding: EdgeInsets.all(12.0),
-                child: Text(
-                  'Belum ada data sensor untuk menghasilkan kesimpulan.',
-                  style: TextStyle(color: Colors.white),
-                ),
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade400,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Text(
+                'Belum ada data sensor untuk menghasilkan kesimpulan.',
+                style: TextStyle(color: Colors.white),
               ),
             );
           }
@@ -115,23 +117,66 @@ class AITipsCard extends StatelessWidget {
             cahaya: cahaya,
           );
 
-          final sensorText = result['sensor']!;
-          final tipText = result['tip']!;
-          final decision = result['decision']!;
+          final isAI = result['decision'] == 'AI';
 
-          final cardColor = decision == 'AI'
-              ? Colors.red[600]
-              : Colors.green[600];
-
-          return Card(
-            elevation: 3,
-            color: cardColor,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Text(
-                '$sensorText\n\n$tipText',
-                style: const TextStyle(color: Colors.white),
+          return Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isAI
+                    ? [Colors.red.shade600, Colors.red.shade400]
+                    : [Colors.green.shade600, Colors.green.shade400],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isAI ? 'Rekomendasi ' : '✅ Kondisi Normal',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                _sensorRow(
+                  Image.asset('assets/image/suhu.png', width: 20, height: 20),
+                  'Suhu',
+                  '${suhu.toStringAsFixed(1)} °C',
+                ),
+
+                _sensorRow(
+                  Image.asset('assets/image/tanah.png', width: 20, height: 20),
+                  'Kelembapan Tanah',
+                  '${tanah.toStringAsFixed(0)} %',
+                ),
+
+                _sensorRow(
+                  Image.asset('assets/image/cahaya.png', width: 20, height: 20),
+                  'Cahaya',
+                  '${cahaya.toStringAsFixed(0)} Lux',
+                ),
+
+                const Divider(color: Colors.white54, height: 24),
+
+                Text(
+                  result['tip']!,
+                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                ),
+              ],
             ),
           );
         },

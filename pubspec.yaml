@@ -36,7 +36,6 @@ flutter_launcher_icons:
 flutter:
   assets:
     - assets/video/sample.mp4
-    - assets/image/cuaca.png
     - assets/image/background.png
     - assets/image/logo.png
     - assets/image/logobg.png
@@ -51,3 +50,5 @@ flutter:
     - assets/image/logout.png
     - assets/image/user.png
     - assets/image/hapus.png
+    - assets/image/tanah.png
+    - assets/image/cahaya.png
