@@ -12,6 +12,7 @@ class DaftarPage extends StatefulWidget {
 }
 
 class _DaftarPageState extends State<DaftarPage> {
+  // Digunakan untuk mengambil nilai dari TextField
   final TextEditingController namaC = TextEditingController();
   final TextEditingController lokasiC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
@@ -21,13 +22,14 @@ class _DaftarPageState extends State<DaftarPage> {
   );
   bool _isSaving = false;
 
-  // Hash password
+  // Mengamankan password sebelum disimpan ke database
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
     return digest.toString();
   }
 
+  // FUNGSI SIMPAN DATA USER
   Future<void> _simpanData() async {
     final name = namaC.text.trim();
     final lokasi = lokasiC.text.trim();
@@ -43,10 +45,10 @@ class _DaftarPageState extends State<DaftarPage> {
     setState(() => _isSaving = true);
 
     try {
-      // 🔑 Buat UID user
+      // FUNGSI SIMPAN DATA USER
       final newUserRef = dbRef.push();
 
-      // 🔹 Data User
+      // DATA USER YANG AKAN DISIMPAN
       final newData = {
         "uid": newUserRef.key,
         "name": name,
@@ -56,6 +58,7 @@ class _DaftarPageState extends State<DaftarPage> {
         "created_at": DateTime.now().toIso8601String(),
       };
 
+      //  SIMPAN DATA USER KE DATABASE
       await newUserRef.set(newData);
 
       if (!mounted) return;
@@ -64,7 +67,6 @@ class _DaftarPageState extends State<DaftarPage> {
         context,
       ).showSnackBar(const SnackBar(content: Text("Akun berhasil dibuat!")));
 
-      // Pindah
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -84,6 +86,7 @@ class _DaftarPageState extends State<DaftarPage> {
     }
   }
 
+  // Mencegah kebocoran memori
   @override
   void dispose() {
     namaC.dispose();
@@ -92,6 +95,7 @@ class _DaftarPageState extends State<DaftarPage> {
     super.dispose();
   }
 
+  // UI HALAMAN PENDAFTARAN
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -173,6 +177,7 @@ class _DaftarPageState extends State<DaftarPage> {
     );
   }
 
+  // WIDGET INPUT
   static Widget _buildInputField({
     required String label,
     required String hint,

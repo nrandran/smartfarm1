@@ -1,8 +1,8 @@
 import 'package:firebase_database/firebase_database.dart';
 
+// SERVICE: DATA LOGGER SENSOR (Bertugas menyimpan data sensor user ke Firebase secara berkala)
 class DataLoggerService {
-  /// Simpan data sensor user setiap detik
-  static Future<void> saveUserSensor(String userId, String? catatan) async {
+  static Future<void> saveUserSensor(String userId) async {
     final dbRef = FirebaseDatabase.instance.ref();
 
     try {
@@ -28,22 +28,13 @@ class DataLoggerService {
         'value': suhu,
         'time': DateTime.now().toIso8601String(),
       });
-
       await dbRef.child("SmartFarm/User/$userId/History/Cahaya/$timestamp").set(
         {'value': cahaya, 'time': DateTime.now().toIso8601String()},
       );
-
       await dbRef.child("SmartFarm/User/$userId/History/tanah/$timestamp").set({
         'value': tanah,
         'time': DateTime.now().toIso8601String(),
       });
-
-      // Simpan catatan terakhir (opsional)
-      if (catatan != null) {
-        await dbRef
-            .child("SmartFarm/User/$userId/SavedData/catatan")
-            .set(catatan);
-      }
 
       print("Sensor tersimpan: suhu=$suhu, cahaya=$cahaya, tanah=$tanah");
     } catch (e) {

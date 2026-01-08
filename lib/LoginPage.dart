@@ -14,10 +14,13 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController namaC = TextEditingController();
   final TextEditingController passwordC = TextEditingController();
-  final DatabaseReference dbRef = FirebaseDatabase.instance.ref("SmartFarm/User");
+  final DatabaseReference dbRef = FirebaseDatabase.instance.ref(
+    "SmartFarm/User",
+  );
 
   bool _isLoading = false;
 
+  // FUNGSI HASH PASSWORD (KEAMANAN)
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha256.convert(bytes);
@@ -54,34 +57,29 @@ class _LoginPageState extends State<LoginPage> {
       String userId = "";
       String lokasi = "";
 
-      // 🔍 Cari user
+      // PENCARIAN USER BERDASARKAN NAMA & PASSWORD
       for (final child in snapshot.children) {
         final data = Map<String, dynamic>.from(child.value as Map);
 
         if (data['name'] == name && data['password_hash'] == hashedPassword) {
           found = true;
-          userId = child.key!;    // ⭐ INI WAJIB: AMBIL userId dari Firebase KEY
+          userId = child.key!;
           lokasi = data['lokasi'] ?? "-";
           break;
         }
       }
 
+      // JIKA LOGIN BERHASIL
       if (found) {
         if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Login berhasil!")),
-        );
-
-        // ⬇ Kirim SEMUA ke HomePage
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Login berhasil!")));
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => HomePage(
-              userId: userId,
-              userName: name,
-              userLocation: lokasi,
-            ),
+            builder: (_) =>
+                HomePage(userId: userId, userName: name, userLocation: lokasi),
           ),
         );
       } else {
@@ -90,9 +88,9 @@ class _LoginPageState extends State<LoginPage> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Terjadi kesalahan: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Terjadi kesalahan: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -105,6 +103,7 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  // UI HALAMAN LOGIN
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -183,6 +182,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // WIDGET INPUT
   static Widget _buildInputField({
     required String label,
     required String hint,

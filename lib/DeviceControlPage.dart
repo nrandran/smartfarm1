@@ -29,6 +29,7 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
   void initState() {
     super.initState();
 
+    // FUNGSI LISTENER SENSOR CONTROL
     void listenSensorControl() {
       FirebaseDatabase.instance
           .ref("SmartFarm/User/${widget.userId}/Sensor_Control")
@@ -48,14 +49,14 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
 
     listenSensorControl();
 
-    /// 🔥 Set path sensor control khusus user
+    // REFERENSI PATH SENSOR CONTROL SETIAP USER
     controlRef = FirebaseDatabase.instance.ref(
       "SmartFarm/User/${widget.userId}/Sensor_Control",
     );
-
     _loadStatus();
   }
 
+  //  mengambil data awal sensor (ON/OFF)
   void _loadStatus() async {
     final snap = await controlRef.get();
 
@@ -70,10 +71,12 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
     }
   }
 
+  // UPDATE STATUS SENSOR KE FIREBASE
   void updateSensor(String key, bool val) {
     controlRef.update({key: val});
   }
 
+  // BUILD UI HALAMAN
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -140,6 +143,7 @@ class _DeviceControlPageState extends State<DeviceControlPage> {
     );
   }
 
+  // WIDGET SWITCH SENSOR
   Widget switchTile(String title, bool value, Function(bool) onChange) {
     return Card(
       elevation: 3,

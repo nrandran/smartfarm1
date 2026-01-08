@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:app_smart_farm/DeviceControlPage.dart';
 import 'package:app_smart_farm/main.dart';
-import 'HomePage.dart';
+
 
 class ProfilPage extends StatelessWidget {
   final String userId;
@@ -38,6 +38,7 @@ class ProfilPage extends StatelessWidget {
           children: [
             const SizedBox(height: 20),
 
+            // INFORMASI PROFIL PENGGUNA
             Card(
               elevation: 3,
               shape: RoundedRectangleBorder(
@@ -62,7 +63,7 @@ class ProfilPage extends StatelessWidget {
 
             const SizedBox(height: 30),
 
-            // ===================== Kontrol Perangkat =====================
+            // TOMBOL MENUJU HALAMAN KONTROL PERANGKAT
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
@@ -97,7 +98,7 @@ class ProfilPage extends StatelessWidget {
 
             const Spacer(),
 
-            // ===================== LOGOUT =====================
+            // BAGIAN LOGOUT AKUN
             Column(
               children: [
                 IconButton(
@@ -159,6 +160,7 @@ class ProfilPage extends StatelessWidget {
     );
   }
 
+  // WIDGET PROFIL
   Widget profileRow(String title, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,

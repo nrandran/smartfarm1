@@ -2,15 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:video_player/video_player.dart';
-
 import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'DeviceControlPage.dart';
+import 'services/notification_service.dart';
+
 import 'NotificationPage.dart';
 import 'ProfilPage.dart';
 import 'AITipsCard.dart';
-import 'data_logger_service.dart';
 
 class HomePage extends StatefulWidget {
   final String userId;
@@ -28,15 +26,19 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+// STATE HOME PAGE
 class _HomePageState extends State<HomePage> {
   late VideoPlayerController _controller;
-  late DatabaseReference forecastRef; //daffa update
+  late DatabaseReference forecastRef;
+  late final StreamSubscription<DatabaseEvent> dataSub;
+
   String userName = "";
   String userLocation = "";
+
   StreamSubscription? _historyListener;
   Timer? historyTimer;
 
-  // Variabel Data Realtime
+  // VARIABEL DATA REALTIME
   double currentSuhu = 0;
   double currentCahaya = 0;
   double currentTanah = 0;
@@ -44,22 +46,26 @@ class _HomePageState extends State<HomePage> {
   String currentStatusTanah = "Menunggu...";
   String currentWaktu = "";
 
-  // List untuk Grafik (History)
+  // DATA GRAFIK (HISTORY)
   List<double> suhuList = [];
   List<double> cahayaList = [];
   List<double> tanahList = [];
   List<String> times = [];
 
+  // INIT STATE
   @override
   void initState() {
     super.initState();
+    NotificationService().start(widget.userId);
+
     forecastRef = FirebaseDatabase.instance.ref(
       "SmartFarm/User/${widget.userId}/Forecast",
     );
+
     _loadUserData();
     _loadHistory();
 
-    // 1. Inisialisasi Video Background
+    // INISIALISASI VIDEO BACKGROUND
     _controller = VideoPlayerController.asset('assets/video/sample.mp4')
       ..initialize().then((_) {
         if (mounted) {
@@ -70,9 +76,7 @@ class _HomePageState extends State<HomePage> {
         }
       });
 
-    // 2. LOAD HISTORY PERTAMA KALI (Agar grafik langsung muncul)
-
-    // LISTENER REALTIME UNTUK HISTORY
+    // LISTENER DATA HISTORY (REALTIME)
     void _startHistoryListener() {
       final dbRef = FirebaseDatabase.instance.ref(
         "SmartFarm/User/${widget.userId}/History",
@@ -107,45 +111,11 @@ class _HomePageState extends State<HomePage> {
     }
 
     _startHistoryListener();
-    // 3. LISTEN DATA REALTIME (Update angka besar & grafik live)
     _listenDataTerbaru();
 
-    // 4. AUTO SAVE TIMER (Simpan ke history setiap 300 detik)
-    historyTimer = Timer.periodic(const Duration(seconds: 300), (_) {
+    // TIMER PENYIMPANAN OTOMATIS KE HISTORY
+    historyTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       _saveCurrentDataToHistory();
-    });
-  }
-
-  void _startHistoryListener() {
-    final dbRef = FirebaseDatabase.instance.ref(
-      "SmartFarm/User/${widget.userId}/History",
-    );
-
-    _historyListener = dbRef.onValue.listen((event) {
-      if (!event.snapshot.exists) return;
-
-      final List<double> tmpSuhu = [];
-      final List<double> tmpCahaya = [];
-      final List<double> tmpTanah = [];
-      final List<String> tmpTimes = [];
-
-      for (var child in event.snapshot.children) {
-        final val = Map<String, dynamic>.from(child.value as Map);
-
-        tmpSuhu.add(double.tryParse(val['suhu'].toString()) ?? 0);
-        tmpCahaya.add(double.tryParse(val['cahaya'].toString()) ?? 0);
-        tmpTanah.add(double.tryParse(val['tanah'].toString()) ?? 0);
-        tmpTimes.add(val['waktu'].toString());
-      }
-
-      if (mounted) {
-        setState(() {
-          suhuList = tmpSuhu;
-          cahayaList = tmpCahaya;
-          tanahList = tmpTanah;
-          times = tmpTimes;
-        });
-      }
     });
   }
 
@@ -163,14 +133,13 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // --- FUNGSI 1: LOAD HISTORY (DARI SmartFarm/User/...) ---
+  // LOAD DATA HISTORY (DATABASE)
   Future<void> _loadHistory() async {
     try {
-      // PERBAIKAN PATH DI SINI
       final ref = FirebaseDatabase.instance
           .ref("SmartFarm/User/${widget.userId}/History")
           .orderByChild('waktu')
-          .limitToLast(20); // Ambil 20 data terakhir
+          .limitToLast(20);
 
       final snapshot = await ref.get();
 
@@ -199,11 +168,11 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint("Gagal load history: $e");
+      debugPrint("Gagal memuat data history: $e");
     }
   }
 
-  // --- FUNGSI 2: LISTEN REALTIME (DARI SmartFarm/Data_Terbaru) ---
+  // LISTEN DATA TERBARU (REALTIME DATABASE)
   void _listenDataTerbaru() {
     FirebaseDatabase.instance.ref("SmartFarm/Data_Terbaru").onValue.listen((
       event,
@@ -212,7 +181,6 @@ class _HomePageState extends State<HomePage> {
         final data = Map<String, dynamic>.from(event.snapshot.value as Map);
 
         setState(() {
-          // Ambil Data
           currentSuhu = double.tryParse(data['suhu']?.toString() ?? '0') ?? 0;
           currentCahaya =
               double.tryParse(data['intensitas_cahaya']?.toString() ?? '0') ??
@@ -227,13 +195,11 @@ class _HomePageState extends State<HomePage> {
           currentStatusTanah = data['kelembapan_tanah_status'] ?? "-";
           currentWaktu = data['waktu'] ?? DateTime.now().toString();
 
-          // Update Grafik Realtime (tambah data baru ke ujung kanan)
           suhuList.add(currentSuhu);
           cahayaList.add(currentCahaya);
           tanahList.add(currentTanah);
           times.add(currentWaktu);
 
-          // Batasi tampilan grafik maks 20 titik agar tidak menumpuk
           if (suhuList.length > 20) {
             suhuList.removeAt(0);
             cahayaList.removeAt(0);
@@ -245,60 +211,49 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // --- FUNGSI 3: SIMPAN KE HISTORY (KE SmartFarm/User/...) ---
+  // SIMPAN DATA KE HISTORY
   Future<void> _saveCurrentDataToHistory() async {
     if (currentWaktu.isEmpty) return;
 
     try {
-      // PERBAIKAN PATH DI SINI JUGA
       final historyRef = FirebaseDatabase.instance.ref(
         "SmartFarm/User/${widget.userId}/History",
       );
 
-      // Push data baru dengan unique ID otomatis
       await historyRef.push().set({
         "suhu": currentSuhu,
         "cahaya": currentCahaya,
         "tanah": currentTanah,
         "waktu": currentWaktu,
       });
-      // print("Data history tersimpan");
     } catch (e) {
-      debugPrint("Error save history: $e");
+      debugPrint("Gagal menyimpan data history: $e");
     }
   }
 
+  //
   @override
   void dispose() {
-    // Matikan timer penyimpan history
     historyTimer?.cancel();
-
-    // Stop video
     _controller.dispose();
-
-    // Hentikan listener Firebase
     _historyListener?.cancel();
-
     super.dispose();
   }
 
+  // MENGHAPUS SELURUH DATA GRAFIK DAN RIWAYAT
   Future<void> _clearAllCharts() async {
-    // 1. Hapus data History di Firebase
     final ref = FirebaseDatabase.instance.ref(
       "SmartFarm/User/${widget.userId}/History",
     );
 
     await ref.remove();
 
-    // 2. Hentikan listener history
     await _historyListener?.cancel();
     _historyListener = null;
 
-    // 3. Hentikan autosave timer (agar tidak menambah data lagi)
     historyTimer?.cancel();
     historyTimer = null;
 
-    // 4. Kosongkan grafik di UI
     if (mounted) {
       setState(() {
         suhuList.clear();
@@ -308,13 +263,12 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    // 5. (opsional) Tampilkan snackbar
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Grafik & History berhasil dihapus")),
     );
   }
 
-  // Widget untuk grafik
+  // WIDGET GRAFIK  (DIGUNAKAN UNTUK SUHU & KELEMBAPAN TANAH)
   Widget buildChart(String title, List<double> dataList, Color lineColor) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -348,7 +302,6 @@ class _HomePageState extends State<HomePage> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
-                        // clamp index ke rentang valid
                         int index = value.round();
                         if (dataList.isEmpty) return const SizedBox();
                         if (index < 0) index = 0;
@@ -394,6 +347,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // WIDGET GRAFIK  INTENSITAS CAHAYA
   Widget buildCahayaChart(String title, List<double> dataList) {
     return Container(
       margin: const EdgeInsets.all(16),
@@ -492,16 +446,14 @@ class _HomePageState extends State<HomePage> {
                     isCurved: true,
                     color: Colors.orange,
                     barWidth: 3,
-                    // Tampilkan titik pada setiap data point (sama seperti buildChart)
                     dotData: FlDotData(
                       show: true,
                       getDotPainter: (spot, percent, barData, index) {
                         return FlDotCirclePainter(
-                          radius: 3.5, // ukuran titik
-                          color: Colors.white, // warna isi titik
+                          radius: 3.5,
+                          color: Colors.white,
                           strokeWidth: 2,
-                          strokeColor: Colors
-                              .orange, // outline agar terlihat di background
+                          strokeColor: Colors.orange,
                         );
                       },
                     ),
@@ -515,6 +467,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // WIDGET KARTU PREDIKSI (FORECAST) DATA HARIAN
   Widget buildForecastCard() {
     return StreamBuilder(
       stream: forecastRef.onValue,
@@ -608,7 +561,7 @@ class _HomePageState extends State<HomePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "🌱 Ramalan Cuaca & Tanah dalam 5 hari",
+                "🌱 Ramalan Kondisi Lingkungan 5 Hari",
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
@@ -645,7 +598,6 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Column(
           children: [
-            // ================= Header =================
             Container(
               padding: const EdgeInsets.all(16),
               color: Colors.white,
@@ -663,7 +615,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const Spacer(),
 
-                  // 🔔 Tombol Notifikasi dengan Badge
+                  // BUTTON NOTIFIKASI DENGAN INDIKATOR JUMLAH PESAN
                   StreamBuilder(
                     stream: FirebaseDatabase.instance
                         .ref("SmartFarm/User/${widget.userId}/Notifikasi")
@@ -674,7 +626,7 @@ class _HomePageState extends State<HomePage> {
                       if (snapshot.hasData &&
                           snapshot.data!.snapshot.value != null) {
                         final data = snapshot.data!.snapshot.value as Map;
-                        jumlahNotif = data.length;
+                        jumlahNotif = data.length; // HITUNG SEMUA NOTIFIKASI
                       }
 
                       return Stack(
@@ -698,7 +650,6 @@ class _HomePageState extends State<HomePage> {
                             },
                           ),
 
-                          // 🔴 Badge merah kecil
                           if (jumlahNotif > 0)
                             Positioned(
                               right: 4,
@@ -728,7 +679,7 @@ class _HomePageState extends State<HomePage> {
 
                   const SizedBox(width: 1),
 
-                  // 🔄 Tombol ke Halaman Profil
+                  // TOMBOL MENUJU HALAMAN PROFIL PENGGUNA
                   IconButton(
                     tooltip: 'Lihat Profil',
                     iconSize: 32,
@@ -753,14 +704,14 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
-            // ================= Konten Scrollable =================
+
+            // BAGIAN KONTEN UTAMA (SCROLLABLE)
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.only(bottom: 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ================= Video =================
                     if (_controller.value.isInitialized)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -775,7 +726,6 @@ class _HomePageState extends State<HomePage> {
 
                     const SizedBox(height: 20),
 
-                    // ================= Sapaan + Lokasi =================
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Row(
@@ -794,7 +744,6 @@ class _HomePageState extends State<HomePage> {
                             ],
                           ),
 
-                          // Lokasi container
                           Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
@@ -828,22 +777,24 @@ class _HomePageState extends State<HomePage> {
 
                     const SizedBox(height: 20),
 
-                    // ================= Tips Tambahan =================
+                    // BAGIAN TIPS
                     const SectionTitle(title: 'Tips'),
                     const SizedBox(height: 10),
                     const AITipsCard(),
                     const SizedBox(height: 10),
 
-                    // ================= Forcesting =================
-                    const SectionTitle(title: 'Prediksi'), //daffa update
-                    buildForecastCard(), // daffa update
+                    // BAGIAN PREDIKSI
+                    const SectionTitle(title: 'Prediksi'),
+                    buildForecastCard(),
                     const SizedBox(height: 5),
 
-                    // ================= Suhu =================
+                    // BAGIAN MONITORING KONDISI LINGKUNGAN
+
+                    //  MONITORING SUHU UDARA
                     const Center(child: SectionTitle(title: 'Suhu Udara')),
                     const SizedBox(height: 5),
 
-                    // ====== Cek apakah sensor ON atau OFF ======
+                    // PENGECEKAN STATUS SENSOR SUHU (AKTIF / NONAKTIF)
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
                           .ref(
@@ -858,7 +809,6 @@ class _HomePageState extends State<HomePage> {
                         final sensorOn =
                             controlSnap.data!.snapshot.value ?? true;
 
-                        // Jika sensor dimatikan → tampilkan pesan, sembunyikan data
                         if (sensorOn == false) {
                           return const Center(
                             child: Text(
@@ -872,7 +822,6 @@ class _HomePageState extends State<HomePage> {
                           );
                         }
 
-                        // ====== Sensor HIDUP → Ambil Data Terbaru ======
                         return StreamBuilder(
                           stream: FirebaseDatabase.instance
                               .ref("SmartFarm/Data_Terbaru")
@@ -944,7 +893,7 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 20),
 
-                                // ====== GRAFIK SUHU (muncul hanya jika sensor ON) ======
+                                // VISUALISASI DATA SUHU DALAM BENTUK GRAFIK
                                 Column(
                                   children: [
                                     buildChart(
@@ -957,7 +906,7 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 20),
 
-                                // ====== Parameter suhu ======
+                                //PARAMETER
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,
@@ -990,7 +939,7 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
 
-                    // ================= Kelembapan Tanah =================
+                    // SUBBAGIAN MONITORING KELEMBAPAN TANAH
                     Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -999,7 +948,7 @@ class _HomePageState extends State<HomePage> {
                           const SectionTitle(title: 'Kelembaban Tanah'),
                           const SizedBox(height: 10),
 
-                          // ====== StreamBuilder Kontrol Sensor ======
+                          // PENGECEKAN SENSOR KELEMBAPAN TANAH (AKTIF / NONAKTIF)
                           StreamBuilder(
                             stream: FirebaseDatabase.instance
                                 .ref(
@@ -1012,7 +961,6 @@ class _HomePageState extends State<HomePage> {
                               final sensorOn =
                                   controlSnap.data!.snapshot.value ?? true;
 
-                              // Jika sensor OFF → matikan tampilan data + grafik
                               if (sensorOn == false) {
                                 return const Text(
                                   "Sensor tanah Dimatikan",
@@ -1025,7 +973,6 @@ class _HomePageState extends State<HomePage> {
                                 );
                               }
 
-                              // ====== Sensor ON → Ambil Data Terbaru ======
                               return StreamBuilder(
                                 stream: FirebaseDatabase.instance
                                     .ref("SmartFarm/Data_Terbaru")
@@ -1064,7 +1011,6 @@ class _HomePageState extends State<HomePage> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
                                     children: [
-                                      // Persentase nilai
                                       Text(
                                         "$tanah %",
                                         style: const TextStyle(
@@ -1077,7 +1023,6 @@ class _HomePageState extends State<HomePage> {
 
                                       const SizedBox(height: 10),
 
-                                      // Status
                                       Text(
                                         "Status: $tanahStatus",
                                         style: const TextStyle(
@@ -1089,7 +1034,7 @@ class _HomePageState extends State<HomePage> {
 
                                       const SizedBox(height: 20),
 
-                                      // ================= Grafik Kelembapan Tanah =================
+                                      // GRAFIK KELEMBAPAN TANAH
                                       Column(
                                         children: [
                                           buildChart(
@@ -1102,7 +1047,6 @@ class _HomePageState extends State<HomePage> {
 
                                       const SizedBox(height: 20),
 
-                                      // ================= Parameter Kelembapan =================
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 16,
@@ -1138,13 +1082,13 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
 
-                    // ================= Intensitas Cahaya =================
+                    //  MONITORING INTENSITAS CAHAYA
                     const Center(
                       child: SectionTitle(title: 'Intensitas Cahaya'),
                     ),
                     const SizedBox(height: 10),
 
-                    // ===== StreamBuilder Kontrol Sensor Cahaya =====
+                    // PENGECEKAN STATUS SENSOR CAHAYA (AKTIF / NONAKTIF)
                     StreamBuilder(
                       stream: FirebaseDatabase.instance
                           .ref(
@@ -1157,7 +1101,6 @@ class _HomePageState extends State<HomePage> {
                         final sensorOn =
                             controlSnap.data!.snapshot.value ?? true;
 
-                        // Sensor OFF → matikan data + grafik
                         if (sensorOn == false) {
                           return const Center(
                             child: Text(
@@ -1172,7 +1115,6 @@ class _HomePageState extends State<HomePage> {
                           );
                         }
 
-                        // ===== Sensor ON → Ambil data intensitas cahaya =====
                         return StreamBuilder(
                           stream: FirebaseDatabase.instance
                               .ref("SmartFarm/Data_Terbaru")
@@ -1210,7 +1152,6 @@ class _HomePageState extends State<HomePage> {
                               children: [
                                 const SizedBox(height: 20),
 
-                                // Nilai angka Lux
                                 Center(
                                   child: Text(
                                     "${cahaya.toStringAsFixed(0)} Lux",
@@ -1225,7 +1166,6 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 5),
 
-                                // Status cahaya
                                 Center(
                                   child: Text(
                                     "Status: $cahayaStatus",
@@ -1239,7 +1179,7 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 20),
 
-                                // ===== Grafik Intensitas Cahaya =====
+                                // GRAFIK INTENSITAS CAHAYA
                                 Column(
                                   children: [
                                     buildCahayaChart(
@@ -1251,7 +1191,6 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 20),
 
-                                // ===== Parameter Cahaya =====
                                 Padding(
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 16,

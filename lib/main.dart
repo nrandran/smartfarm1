@@ -14,6 +14,7 @@ Future<void> main() async {
   final user = FirebaseAuth.instance.currentUser;
   Map<String, dynamic>? profile;
 
+  // CEK STATUS LOGIN DAN AMBIL DATA PROFIL
   if (user != null) {
     final snap = await FirebaseDatabase.instance
         .ref("SmartFarm/User/${user.uid}/profile")
@@ -24,14 +25,17 @@ Future<void> main() async {
     }
   }
 
-  runApp(MyApp(
-    isLoggedIn: user != null,
-    userId: user?.uid,
-    userName: profile?["name"],
-    userLocation: profile?["location"],
-  ));
+  runApp(
+    MyApp(
+      isLoggedIn: user != null,
+      userId: user?.uid,
+      userName: profile?["name"],
+      userLocation: profile?["location"],
+    ),
+  );
 }
 
+// CLASS UTAMA APLIKASI
 class MyApp extends StatelessWidget {
   final bool isLoggedIn;
   final String? userId;
@@ -53,7 +57,6 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.green, fontFamily: 'Arial'),
       debugShowCheckedModeBanner: false,
 
-      /// Jika sudah login → arahkan ke HomePage dengan data lengkap
       home: isLoggedIn
           ? HomePage(
               userId: userId!,
@@ -65,9 +68,11 @@ class MyApp extends StatelessWidget {
   }
 }
 
+// HALAMAN AWAL (START SETUP PAGE)
 class StartSetupPage extends StatelessWidget {
   const StartSetupPage({super.key});
 
+  // STRUKTUR TAMPILAN HALAMAN
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -124,6 +129,8 @@ class StartSetupPage extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 30),
+
+                    // TOMBOL DAFTAR
                     ElevatedButton(
                       onPressed: () {
                         Navigator.push(
@@ -147,6 +154,8 @@ class StartSetupPage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 30),
+
+                    // TOMBOL MASUK (LOGIN)
                     ElevatedButton(
                       onPressed: () {
                         Navigator.push(
